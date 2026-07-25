@@ -1,10 +1,13 @@
 abstract final class DatabaseSchema {
-  static const version = 7;
+  static const version = 8;
 
   static const createTrainingTemplate = '''
 CREATE TABLE training_template (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+  template_type TEXT NOT NULL DEFAULT 'other' CHECK(template_type IN (
+    'hyrox_race', 'workout', 'interval', 'strength', 'other'
+  )),
   is_built_in INTEGER NOT NULL DEFAULT 0 CHECK(is_built_in IN (0, 1)),
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL
@@ -15,15 +18,18 @@ CREATE TABLE training_template (
 CREATE TABLE template_segment (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   template_id INTEGER NOT NULL REFERENCES training_template(id) ON DELETE CASCADE,
+  segment_kind TEXT NOT NULL DEFAULT 'station' CHECK(segment_kind IN (
+    'station', 'rest', 'warmup', 'cooldown'
+  )),
   station_type TEXT NOT NULL CHECK(station_type IN (
     'run', 'ski_erg', 'sled_push', 'sled_pull', 'burpee_broad_jump',
     'row', 'farmer_carry', 'sandbag_lunge', 'wall_ball'
   )),
   sequence_index INTEGER NOT NULL CHECK(sequence_index >= 0),
-  distance_meters INTEGER CHECK(distance_meters IS NULL OR distance_meters > 0),
-  resistance_level INTEGER CHECK(resistance_level IS NULL OR resistance_level > 0),
-  weight_kg REAL CHECK(weight_kg IS NULL OR weight_kg > 0),
-  repetitions INTEGER CHECK(repetitions IS NULL OR repetitions > 0),
+  target_distance_meters INTEGER CHECK(target_distance_meters IS NULL OR target_distance_meters > 0),
+  target_resistance_level INTEGER CHECK(target_resistance_level IS NULL OR target_resistance_level > 0),
+  target_weight_kg REAL CHECK(target_weight_kg IS NULL OR target_weight_kg > 0),
+  target_repetitions INTEGER CHECK(target_repetitions IS NULL OR target_repetitions > 0),
   UNIQUE(template_id, sequence_index)
 )
 ''';
@@ -64,6 +70,9 @@ CREATE TABLE training_session (
 CREATE TABLE station_record (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id INTEGER NOT NULL REFERENCES training_session(id) ON DELETE CASCADE,
+  segment_kind TEXT NOT NULL DEFAULT 'station' CHECK(segment_kind IN (
+    'station', 'rest', 'warmup', 'cooldown'
+  )),
   station_type TEXT NOT NULL CHECK(station_type IN (
     'run', 'ski_erg', 'sled_push', 'sled_pull', 'burpee_broad_jump',
     'row', 'farmer_carry', 'sandbag_lunge', 'wall_ball'
@@ -77,10 +86,14 @@ CREATE TABLE station_record (
   accumulated_ms INTEGER NOT NULL DEFAULT 0 CHECK(accumulated_ms >= 0),
   athlete TEXT CHECK(athlete IS NULL OR athlete IN ('self', 'partner', 'both')),
   athlete_name TEXT,
-  distance_meters INTEGER CHECK(distance_meters IS NULL OR distance_meters >= 0),
-  resistance_level INTEGER CHECK(resistance_level IS NULL OR resistance_level > 0),
-  weight_kg REAL CHECK(weight_kg IS NULL OR weight_kg >= 0),
-  repetitions INTEGER CHECK(repetitions IS NULL OR repetitions >= 0),
+  target_distance_meters INTEGER CHECK(target_distance_meters IS NULL OR target_distance_meters >= 0),
+  target_resistance_level INTEGER CHECK(target_resistance_level IS NULL OR target_resistance_level > 0),
+  target_weight_kg REAL CHECK(target_weight_kg IS NULL OR target_weight_kg >= 0),
+  target_repetitions INTEGER CHECK(target_repetitions IS NULL OR target_repetitions >= 0),
+  actual_distance_meters INTEGER CHECK(actual_distance_meters IS NULL OR actual_distance_meters >= 0),
+  actual_resistance_level INTEGER CHECK(actual_resistance_level IS NULL OR actual_resistance_level > 0),
+  actual_weight_kg REAL CHECK(actual_weight_kg IS NULL OR actual_weight_kg >= 0),
+  actual_repetitions INTEGER CHECK(actual_repetitions IS NULL OR actual_repetitions >= 0),
   transition_started_at_ms INTEGER,
   transition_ended_at_ms INTEGER,
   transition_duration_ms INTEGER CHECK(
@@ -91,16 +104,32 @@ CREATE TABLE station_record (
 )
 ''';
 
+  static const createHeartRateImport = '''
+CREATE TABLE heart_rate_import (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL REFERENCES training_session(id) ON DELETE CASCADE,
+  source TEXT NOT NULL,
+  external_activity_id TEXT,
+  external_activity_name TEXT,
+  file_name TEXT,
+  imported_at_ms INTEGER NOT NULL,
+  sample_count INTEGER NOT NULL CHECK(sample_count > 0),
+  avg_heart_rate INTEGER NOT NULL CHECK(avg_heart_rate > 0),
+  max_heart_rate INTEGER NOT NULL CHECK(max_heart_rate > 0),
+  is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1))
+)
+''';
+
   static const createHeartRateSample = '''
 CREATE TABLE heart_rate_sample (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id INTEGER NOT NULL REFERENCES training_session(id) ON DELETE CASCADE,
+  import_batch_id INTEGER NOT NULL REFERENCES heart_rate_import(id) ON DELETE CASCADE,
   timestamp_ms INTEGER NOT NULL,
   heart_rate_bpm INTEGER NOT NULL CHECK(heart_rate_bpm > 0),
   speed_mps REAL,
   cadence_rpm INTEGER,
-  source TEXT NOT NULL,
-  UNIQUE(session_id, timestamp_ms, source)
+  UNIQUE(import_batch_id, timestamp_ms)
 )
 ''';
 
@@ -109,6 +138,8 @@ CREATE TABLE heart_rate_sample (
     'CREATE INDEX idx_session_started_at ON training_session(started_at_ms DESC)',
     'CREATE INDEX idx_station_session ON station_record(session_id, sequence_index)',
     'CREATE INDEX idx_hr_session_time ON heart_rate_sample(session_id, timestamp_ms)',
+    'CREATE INDEX idx_hr_import_session ON heart_rate_import(session_id, imported_at_ms DESC)',
+    'CREATE UNIQUE INDEX idx_active_hr_import ON heart_rate_import(session_id) WHERE is_active = 1',
     uniqueActiveSessionIndex,
   ];
 

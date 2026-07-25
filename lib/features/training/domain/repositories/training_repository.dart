@@ -33,6 +33,12 @@ abstract interface class TrainingRepository {
     required String athleteName,
     required bool skipped,
     required bool startTransition,
+    required StationActualPerformance actualPerformance,
+  });
+
+  Future<void> updateStationActualPerformance({
+    required int stationId,
+    required StationActualPerformance actualPerformance,
   });
   Future<void> finishTransitionAndActivateNext({
     required int fromStationId,

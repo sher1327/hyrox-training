@@ -4,6 +4,8 @@ enum TrainingStatus { draft, inProgress, completed, cancelled }
 
 enum SegmentStatus { pending, active, completed, skipped }
 
+enum TrainingSegmentKind { station, rest, warmup, cooldown }
+
 enum AthleteAssignment { self, partner, both }
 
 enum StationType {
@@ -89,16 +91,21 @@ final class StationRecord {
     required this.type,
     required this.sequenceIndex,
     required this.status,
+    this.segmentKind = TrainingSegmentKind.station,
     this.runNumber,
     this.startedAt,
     this.endedAt,
     this.duration,
     this.athlete,
     this.athleteName,
-    this.distanceMeters,
-    this.resistanceLevel,
-    this.weightKg,
-    this.repetitions,
+    this.targetDistanceMeters,
+    this.targetResistanceLevel,
+    this.targetWeightKg,
+    this.targetRepetitions,
+    this.actualDistanceMeters,
+    this.actualResistanceLevel,
+    this.actualWeightKg,
+    this.actualRepetitions,
     this.transitionStartedAt,
     this.transitionEndedAt,
     this.transitionDuration,
@@ -110,15 +117,20 @@ final class StationRecord {
   final int? runNumber;
   final int sequenceIndex;
   final SegmentStatus status;
+  final TrainingSegmentKind segmentKind;
   final DateTime? startedAt;
   final DateTime? endedAt;
   final Duration? duration;
   final AthleteAssignment? athlete;
   final String? athleteName;
-  final int? distanceMeters;
-  final int? resistanceLevel;
-  final double? weightKg;
-  final int? repetitions;
+  final int? targetDistanceMeters;
+  final int? targetResistanceLevel;
+  final double? targetWeightKg;
+  final int? targetRepetitions;
+  final int? actualDistanceMeters;
+  final int? actualResistanceLevel;
+  final double? actualWeightKg;
+  final int? actualRepetitions;
   final DateTime? transitionStartedAt;
   final DateTime? transitionEndedAt;
   final Duration? transitionDuration;
@@ -126,18 +138,51 @@ final class StationRecord {
   bool get isTransitionActive =>
       transitionStartedAt != null && transitionEndedAt == null;
 
+  bool get hasActualPerformance =>
+      actualDistanceMeters != null ||
+      actualResistanceLevel != null ||
+      actualWeightKg != null ||
+      actualRepetitions != null;
+
+  bool get actualMatchesTarget =>
+      actualDistanceMeters == targetDistanceMeters &&
+      actualResistanceLevel == targetResistanceLevel &&
+      actualWeightKg == targetWeightKg &&
+      actualRepetitions == targetRepetitions;
+
+  String? get actualSpecification {
+    if (!hasActualPerformance) return null;
+    if (actualMatchesTarget) return '实际：按计划完成';
+    final details = <String>[];
+    if (actualResistanceLevel != null) {
+      details.add('阻力 $actualResistanceLevel');
+    }
+    if (actualWeightKg != null) {
+      final value = actualWeightKg == actualWeightKg!.roundToDouble()
+          ? actualWeightKg!.toInt().toString()
+          : actualWeightKg!.toStringAsFixed(1);
+      details
+          .add(type == StationType.farmerCarry ? '2 × $value kg' : '$value kg');
+    }
+    if (actualDistanceMeters != null) details.add('$actualDistanceMeters m');
+    if (actualRepetitions != null) details.add('$actualRepetitions 次');
+    return details.isEmpty ? null : '实际：${details.join(' · ')}';
+  }
+
   String get displayName {
     final details = <String>[];
-    if (resistanceLevel != null) details.add('阻力 $resistanceLevel');
-    if (weightKg != null) {
-      final weight = weightKg == weightKg!.roundToDouble()
-          ? weightKg!.toInt().toString()
-          : weightKg!.toStringAsFixed(1);
+    if (targetResistanceLevel != null) {
+      details.add('阻力 $targetResistanceLevel');
+    }
+    if (targetWeightKg != null) {
+      final weight = targetWeightKg == targetWeightKg!.roundToDouble()
+          ? targetWeightKg!.toInt().toString()
+          : targetWeightKg!.toStringAsFixed(1);
       details.add(
           type == StationType.farmerCarry ? '2 × $weight kg' : '$weight kg');
     }
-    if (distanceMeters != null) details.add('$distanceMeters m');
-    if (repetitions != null) details.add('$repetitions 次');
+    if (targetDistanceMeters != null) details.add('$targetDistanceMeters m');
+    if (targetRepetitions != null) details.add('$targetRepetitions 次');
     final name =
         type == StationType.run ? '${type.label} $runNumber' : type.label;
     return details.isEmpty ? name : '$name · ${details.join(' · ')}';
@@ -157,21 +202,48 @@ final class StationRecord {
       type: type,
       sequenceIndex: sequenceIndex,
       status: status ?? this.status,
+      segmentKind: segmentKind,
       runNumber: runNumber,
       startedAt: startedAt ?? this.startedAt,
       endedAt: endedAt ?? this.endedAt,
       duration: duration ?? this.duration,
       athlete: athlete ?? this.athlete,
       athleteName: athleteName ?? this.athleteName,
-      distanceMeters: distanceMeters,
-      resistanceLevel: resistanceLevel,
-      weightKg: weightKg,
-      repetitions: repetitions,
+      targetDistanceMeters: targetDistanceMeters,
+      targetResistanceLevel: targetResistanceLevel,
+      targetWeightKg: targetWeightKg,
+      targetRepetitions: targetRepetitions,
+      actualDistanceMeters: actualDistanceMeters,
+      actualResistanceLevel: actualResistanceLevel,
+      actualWeightKg: actualWeightKg,
+      actualRepetitions: actualRepetitions,
       transitionStartedAt: transitionStartedAt,
       transitionEndedAt: transitionEndedAt,
       transitionDuration: transitionDuration,
     );
   }
+}
+
+final class StationActualPerformance {
+  const StationActualPerformance({
+    this.distanceMeters,
+    this.resistanceLevel,
+    this.weightKg,
+    this.repetitions,
+  });
+
+  final int? distanceMeters;
+  final int? resistanceLevel;
+  final double? weightKg;
+  final int? repetitions;
+
+  factory StationActualPerformance.fromTarget(StationRecord station) =>
+      StationActualPerformance(
+        distanceMeters: station.targetDistanceMeters,
+        resistanceLevel: station.targetResistanceLevel,
+        weightKg: station.targetWeightKg,
+        repetitions: station.targetRepetitions,
+      );
 }
 
 const standardHyroxFlow = <({StationType type, int? runNumber})>[

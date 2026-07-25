@@ -1,12 +1,13 @@
-# SQLite database design (v7)
+# SQLite database design (v8)
 
-Database: `hyrox.db`, with foreign keys enabled and schema version `7`.
+Database: `hyrox.db`, with foreign keys enabled and schema version `8`.
 
 ## Relationships
 
 ```text
 training_session 1 ─── 1..n station_record
-training_session 1 ─── 0..n heart_rate_sample
+training_session 1 ─── 0..n heart_rate_import
+heart_rate_import 1 ─── 1..n heart_rate_sample
 training_template 1 ─── 1..n template_segment
 training_template 0..1 ─── 0..n training_session
 ```
@@ -43,6 +44,7 @@ session. The count is dynamic; a session is no longer limited to 16 segments.
 |---|---|---|
 | id | INTEGER PK AUTOINCREMENT | Local identity |
 | session_id | INTEGER FK | Cascade delete |
+| segment_kind | TEXT | `station`, `rest`, `warmup`, `cooldown` |
 | station_type | TEXT | Nine-value station enum |
 | run_number | INTEGER nullable | 1–8 for run segments |
 | sequence_index | INTEGER | 0–15 |
@@ -52,21 +54,25 @@ session. The count is dynamic; a session is no longer limited to 16 segments.
 | accumulated_ms | INTEGER | Pause/resume-ready duration |
 | athlete | TEXT nullable | `self`, `partner`, `both` |
 | athlete_name | TEXT nullable | Actual selected teammate name; supports relay |
-| distance_meters | INTEGER nullable | Future analysis |
-| resistance_level | INTEGER nullable | SkiErg/RowErg damper setting |
-| weight_kg | REAL nullable | Future analysis |
-| repetitions | INTEGER nullable | Wall-ball etc. |
+| target_* | INTEGER/REAL nullable | Planned distance, resistance, weight and repetitions |
+| actual_* | INTEGER/REAL nullable | Actual completed values; defaults to target on normal completion |
 | transition_started_at_ms | INTEGER nullable | Transition after this segment |
 | transition_ended_at_ms | INTEGER nullable | Transition completion time |
 | transition_duration_ms | INTEGER nullable | Persisted transition duration |
 | remark | TEXT nullable | Segment note |
 
+## `heart_rate_import`
+
+One row per import batch, including source, external activity/file metadata,
+summary values and whether the batch is currently active for analysis. Previous
+imports are retained when a new FIT or Intervals.icu activity is selected.
+
 ## `heart_rate_sample`
 
 Stores every imported sample: `session_id`, UTC `timestamp_ms`,
-`heart_rate_bpm`, optional speed/cadence, and `source`. Samples are retained for
-future charts, zones and recovery analysis. The `(session_id, timestamp_ms)`
-index makes session and segment range queries efficient.
+`heart_rate_bpm`, `import_batch_id`, and optional speed/cadence. Samples are
+retained for future charts, zones, device comparison and recovery analysis. The
+`(session_id, timestamp_ms)` index makes session and segment queries efficient.
 
 ## Integrity rules
 
@@ -120,3 +126,16 @@ active. This makes the migration forward-only and preserves all training data.
 - Ending a transition and activating the next segment happens atomically.
 - Reports use explicitly recorded transition durations when available while
   retaining the legacy derived-duration fallback for older sessions.
+
+## Version 8 performance and import batches
+
+- Template specifications use explicit `target_*` names.
+- Session segments snapshot the targets and independently store `actual_*`.
+- Normal completion defaults actual values to the targets without interrupting
+  timing; users can edit them during transition or from the finished report.
+- Templates have an orthogonal type: HYROX race, workout, interval, strength or
+  other. Built-in status remains a separate property.
+- Segments receive a `segment_kind` foundation for future rest, warmup and
+  cooldown flows; transition timing remains attached to the preceding segment.
+- Heart-rate samples belong to an import batch. Re-import switches the active
+  batch while retaining prior raw samples.

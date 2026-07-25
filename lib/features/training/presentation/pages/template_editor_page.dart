@@ -18,6 +18,7 @@ class TemplateEditorPage extends ConsumerStatefulWidget {
 class _TemplateEditorPageState extends ConsumerState<TemplateEditorPage> {
   final _nameController = TextEditingController();
   final _segments = <TemplateSegmentInput>[];
+  TemplateType _templateType = TemplateType.other;
   bool _loading = true;
   bool _saving = false;
 
@@ -40,14 +41,16 @@ class _TemplateEditorPageState extends ConsumerState<TemplateEditorPage> {
       final template = await repository.getTemplate(widget.templateId!);
       if (template == null) throw StateError('模板不存在');
       _nameController.text = template.name;
+      _templateType = template.type;
       _segments.addAll(
         template.segments.map(
           (segment) => TemplateSegmentInput(
             type: segment.type,
-            distanceMeters: segment.distanceMeters,
-            resistanceLevel: segment.resistanceLevel,
-            weightKg: segment.weightKg,
-            repetitions: segment.repetitions,
+            segmentKind: segment.segmentKind,
+            targetDistanceMeters: segment.targetDistanceMeters,
+            targetResistanceLevel: segment.targetResistanceLevel,
+            targetWeightKg: segment.targetWeightKg,
+            targetRepetitions: segment.targetRepetitions,
           ),
         ),
       );
@@ -72,6 +75,7 @@ class _TemplateEditorPageState extends ConsumerState<TemplateEditorPage> {
       if (widget.templateId == null) {
         await repository.createTemplate(
           name: _nameController.text,
+          type: _templateType,
           segments: _segments,
           createdAt: now,
         );
@@ -79,6 +83,7 @@ class _TemplateEditorPageState extends ConsumerState<TemplateEditorPage> {
         await repository.updateTemplate(
           templateId: widget.templateId!,
           name: _nameController.text,
+          type: _templateType,
           segments: _segments,
           updatedAt: now,
         );
@@ -120,6 +125,29 @@ class _TemplateEditorPageState extends ConsumerState<TemplateEditorPage> {
                       hintText: '例如：短跑力量循环',
                       border: OutlineInputBorder(),
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<TemplateType>(
+                    initialValue: _templateType,
+                    decoration: const InputDecoration(
+                      labelText: '模板类型',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: TemplateType.values
+                        .map(
+                          (type) => DropdownMenuItem(
+                            value: type,
+                            child: Text(type.label),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: _saving
+                        ? null
+                        : (value) {
+                            if (value != null) {
+                              setState(() => _templateType = value);
+                            }
+                          },
                   ),
                   const SizedBox(height: 18),
                   Row(
@@ -200,7 +228,10 @@ class _TemplateEditorPageState extends ConsumerState<TemplateEditorPage> {
       final distance = await _askDistance(1000);
       if (distance == null) return;
       setState(() => _segments.add(
-            TemplateSegmentInput(type: type, distanceMeters: distance),
+            TemplateSegmentInput(
+              type: type,
+              targetDistanceMeters: distance,
+            ),
           ));
     } else {
       setState(() => _segments.add(TemplateSegmentInput(type: type)));
@@ -217,12 +248,12 @@ class _TemplateEditorPageState extends ConsumerState<TemplateEditorPage> {
 
   Future<void> _editRunDistance(int index) async {
     final distance =
-        await _askDistance(_segments[index].distanceMeters ?? 1000);
+        await _askDistance(_segments[index].targetDistanceMeters ?? 1000);
     if (distance == null) return;
     setState(() {
       _segments[index] = TemplateSegmentInput(
         type: StationType.run,
-        distanceMeters: distance,
+        targetDistanceMeters: distance,
       );
     });
   }
@@ -241,16 +272,16 @@ class _TemplateEditorPageState extends ConsumerState<TemplateEditorPage> {
         segment.type == StationType.wallBall;
     final formKey = GlobalKey<FormState>();
     final resistanceController = TextEditingController(
-      text: segment.resistanceLevel?.toString() ?? '',
+      text: segment.targetResistanceLevel?.toString() ?? '',
     );
     final weightController = TextEditingController(
-      text: _formatWeightInput(segment.weightKg),
+      text: _formatWeightInput(segment.targetWeightKg),
     );
     final distanceController = TextEditingController(
-      text: segment.distanceMeters?.toString() ?? '',
+      text: segment.targetDistanceMeters?.toString() ?? '',
     );
     final repetitionsController = TextEditingController(
-      text: segment.repetitions?.toString() ?? '',
+      text: segment.targetRepetitions?.toString() ?? '',
     );
 
     final result = await showDialog<TemplateSegmentInput>(
@@ -315,10 +346,11 @@ class _TemplateEditorPageState extends ConsumerState<TemplateEditorPage> {
                 context,
                 TemplateSegmentInput(
                   type: segment.type,
-                  resistanceLevel: _optionalInt(resistanceController.text),
-                  weightKg: _optionalDouble(weightController.text),
-                  distanceMeters: _optionalInt(distanceController.text),
-                  repetitions: _optionalInt(repetitionsController.text),
+                  targetResistanceLevel:
+                      _optionalInt(resistanceController.text),
+                  targetWeightKg: _optionalDouble(weightController.text),
+                  targetDistanceMeters: _optionalInt(distanceController.text),
+                  targetRepetitions: _optionalInt(repetitionsController.text),
                 ),
               );
             },

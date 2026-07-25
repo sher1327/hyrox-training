@@ -47,8 +47,8 @@ void main() {
   test('optional station specifications produce a readable label', () {
     const segment = TemplateSegmentInput(
       type: StationType.farmerCarry,
-      distanceMeters: 200,
-      weightKg: 24,
+      targetDistanceMeters: 200,
+      targetWeightKg: 24,
     );
     expect(segment.displayName, 'FARMER CARRY · 2 × 24 kg · 200 m');
   });
@@ -207,11 +207,45 @@ void main() {
       runNumber: 2,
       sequenceIndex: 2,
       status: SegmentStatus.completed,
-      distanceMeters: 300,
+      targetDistanceMeters: 300,
       duration: Duration(minutes: 2),
     );
 
     expect(record.displayName, 'RUN 2 · 300 m');
+  });
+
+  test('completed station can distinguish target and actual performance', () {
+    const record = StationRecord(
+      id: 2,
+      sessionId: 1,
+      type: StationType.wallBall,
+      sequenceIndex: 15,
+      status: SegmentStatus.completed,
+      targetWeightKg: 6,
+      targetRepetitions: 100,
+      actualWeightKg: 6,
+      actualRepetitions: 86,
+    );
+
+    expect(record.hasActualPerformance, isTrue);
+    expect(record.actualMatchesTarget, isFalse);
+    expect(record.actualSpecification, '实际：6 kg · 86 次');
+  });
+
+  test('actual performance defaults can be created from station targets', () {
+    const record = StationRecord(
+      id: 3,
+      sessionId: 1,
+      type: StationType.sledPush,
+      sequenceIndex: 3,
+      status: SegmentStatus.completed,
+      targetDistanceMeters: 50,
+      targetWeightKg: 152,
+    );
+
+    final actual = StationActualPerformance.fromTarget(record);
+    expect(actual.distanceMeters, 50);
+    expect(actual.weightKg, 152);
   });
 
   test('relay session exposes all three teammate names in order', () {

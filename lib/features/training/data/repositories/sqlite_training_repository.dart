@@ -76,6 +76,7 @@ final class SqliteTrainingRepository implements TrainingRepository {
     required String athleteName,
     required bool skipped,
     required bool startTransition,
+    required StationActualPerformance actualPerformance,
   }) =>
       _dao.finishStationAndAdvance(
         sessionId: sessionId,
@@ -86,6 +87,17 @@ final class SqliteTrainingRepository implements TrainingRepository {
         athleteName: athleteName,
         skipped: skipped,
         startTransition: startTransition,
+        actualPerformance: actualPerformance,
+      );
+
+  @override
+  Future<void> updateStationActualPerformance({
+    required int stationId,
+    required StationActualPerformance actualPerformance,
+  }) =>
+      _dao.updateStationActualPerformance(
+        stationId: stationId,
+        actualPerformance: actualPerformance,
       );
 
   @override
@@ -143,6 +155,9 @@ StationRecord _stationFromRow(Map<String, Object?> row) => StationRecord(
       runNumber: row['run_number'] as int?,
       sequenceIndex: row['sequence_index']! as int,
       status: _segmentStatus(row['status']! as String),
+      segmentKind: TrainingSegmentKind.values.byName(
+        row['segment_kind']! as String,
+      ),
       startedAt: _date(row['started_at_ms']),
       endedAt: _date(row['ended_at_ms']),
       duration: row['duration_ms'] == null
@@ -152,10 +167,14 @@ StationRecord _stationFromRow(Map<String, Object?> row) => StationRecord(
           ? null
           : AthleteAssignment.values.byName(row['athlete']! as String),
       athleteName: row['athlete_name'] as String?,
-      distanceMeters: row['distance_meters'] as int?,
-      resistanceLevel: row['resistance_level'] as int?,
-      weightKg: (row['weight_kg'] as num?)?.toDouble(),
-      repetitions: row['repetitions'] as int?,
+      targetDistanceMeters: row['target_distance_meters'] as int?,
+      targetResistanceLevel: row['target_resistance_level'] as int?,
+      targetWeightKg: (row['target_weight_kg'] as num?)?.toDouble(),
+      targetRepetitions: row['target_repetitions'] as int?,
+      actualDistanceMeters: row['actual_distance_meters'] as int?,
+      actualResistanceLevel: row['actual_resistance_level'] as int?,
+      actualWeightKg: (row['actual_weight_kg'] as num?)?.toDouble(),
+      actualRepetitions: row['actual_repetitions'] as int?,
       transitionStartedAt: _date(row['transition_started_at_ms']),
       transitionEndedAt: _date(row['transition_ended_at_ms']),
       transitionDuration: row['transition_duration_ms'] == null

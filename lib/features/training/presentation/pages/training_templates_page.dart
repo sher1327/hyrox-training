@@ -109,7 +109,7 @@ class _TemplateCard extends StatelessWidget {
     final runs = template.segments.where((item) => item.type.name == 'run');
     final totalMeters = runs.fold<int>(
       0,
-      (sum, item) => sum + (item.distanceMeters ?? 0),
+      (sum, item) => sum + (item.targetDistanceMeters ?? 0),
     );
     return Card(
       child: Padding(
@@ -152,7 +152,7 @@ class _TemplateCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${template.segments.length} 个项目 · '
+                    '${template.type.label} · ${template.segments.length} 个项目 · '
                     '${runs.length} 段跑步 · $totalMeters m',
                     style: const TextStyle(color: Colors.white54),
                   ),

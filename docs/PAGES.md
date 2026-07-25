@@ -33,6 +33,8 @@ Dashboard ── New training ── Active timer ── Summary
 - Main action: Complete segment
 - After completion, choose transition timing or start the next segment directly
 - Transition view shows its own live timer and a “Start next segment” action
+- Normal completion records actual values from the plan without another prompt
+- During transition, actual distance/resistance/weight/repetitions can be edited
 - Secondary action: Skip segment
 - Compact 16-dot progress indicator
 - Progress list accessible without changing timer state
@@ -56,6 +58,8 @@ Back navigation requires a future confirmation dialog because the active state i
   directly, while multiple matches are presented for explicit selection
 - Full-session average/maximum plus per-segment average/maximum heart rate
 - Imported timestamped samples remain in SQLite for future analysis
+- Planned and actual specifications are shown per completed segment
+- Actual values can be corrected after the workout from the report
 
 ## 6. Summary
 
@@ -65,6 +69,7 @@ The completed detail page doubles as the end-of-training summary. This avoids tw
 
 - Three built-in HYROX division templates are read-only.
 - Custom templates can be created, edited and deleted.
+- Templates are categorized as HYROX race, workout, interval, strength or other.
 - Each template contains any number and order of run/function-station segments.
 - Every run requires its own distance in meters.
 - Functional stations optionally accept their relevant resistance, distance,

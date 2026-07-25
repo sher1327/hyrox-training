@@ -31,6 +31,7 @@ final class TrainingTemplateDao {
 
   Future<int> createTemplate({
     required String name,
+    required TemplateType type,
     required List<TemplateSegmentInput> segments,
     required DateTime createdAt,
   }) =>
@@ -38,6 +39,7 @@ final class TrainingTemplateDao {
         final timestamp = createdAt.millisecondsSinceEpoch;
         final templateId = await txn.insert('training_template', {
           'name': name,
+          'template_type': type.name == 'hyroxRace' ? 'hyrox_race' : type.name,
           'is_built_in': 0,
           'created_at_ms': timestamp,
           'updated_at_ms': timestamp,
@@ -49,6 +51,7 @@ final class TrainingTemplateDao {
   Future<void> updateTemplate({
     required int templateId,
     required String name,
+    required TemplateType type,
     required List<TemplateSegmentInput> segments,
     required DateTime updatedAt,
   }) =>
@@ -57,6 +60,8 @@ final class TrainingTemplateDao {
           'training_template',
           {
             'name': name,
+            'template_type':
+                type.name == 'hyroxRace' ? 'hyrox_race' : type.name,
             'updated_at_ms': updatedAt.millisecondsSinceEpoch,
           },
           where: 'id = ? AND is_built_in = 0',
@@ -91,10 +96,11 @@ final class TrainingTemplateDao {
         'template_id': templateId,
         'station_type': _stationTypeToDb(segment.type),
         'sequence_index': index,
-        'distance_meters': segment.distanceMeters,
-        'resistance_level': segment.resistanceLevel,
-        'weight_kg': segment.weightKg,
-        'repetitions': segment.repetitions,
+        'segment_kind': segment.segmentKind.name,
+        'target_distance_meters': segment.targetDistanceMeters,
+        'target_resistance_level': segment.targetResistanceLevel,
+        'target_weight_kg': segment.targetWeightKg,
+        'target_repetitions': segment.targetRepetitions,
       });
     }
   }

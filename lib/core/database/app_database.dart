@@ -22,6 +22,7 @@ final class AppDatabase {
         await db.execute(DatabaseSchema.createTemplateSegment);
         await db.execute(DatabaseSchema.createTrainingSession);
         await db.execute(DatabaseSchema.createStationRecord);
+        await db.execute(DatabaseSchema.createHeartRateImport);
         await db.execute(DatabaseSchema.createHeartRateSample);
         await _seedBuiltInTemplates(db);
         for (final statement in DatabaseSchema.indexes) {
@@ -84,12 +85,12 @@ WHERE status = 'active'
           await db.execute(DatabaseSchema.createStationRecord);
           await db.execute('''
 INSERT INTO station_record (
-  id, session_id, station_type, run_number, sequence_index, status,
+  id, session_id, segment_kind, station_type, run_number, sequence_index, status,
   started_at_ms, ended_at_ms, duration_ms, accumulated_ms, athlete,
-  distance_meters, weight_kg, repetitions, remark
+  target_distance_meters, target_weight_kg, target_repetitions, remark
 )
 SELECT
-  id, session_id, station_type, run_number, sequence_index, status,
+  id, session_id, 'station', station_type, run_number, sequence_index, status,
   started_at_ms, ended_at_ms, duration_ms, accumulated_ms, athlete,
   CASE WHEN station_type = 'run' THEN COALESCE(distance_meters, 1000)
        ELSE distance_meters END,
@@ -169,28 +170,36 @@ WHERE athlete IS NOT NULL
           }
         }
         if (oldVersion < 6) {
-          await db.execute('DROP INDEX IF EXISTS idx_template_segment_order');
-          await db.execute(
-            'ALTER TABLE template_segment RENAME TO template_segment_v5',
-          );
-          await db.execute(DatabaseSchema.createTemplateSegment);
-          await db.execute('''
+          if (await _hasColumn(
+            db,
+            'template_segment',
+            'distance_meters',
+          )) {
+            await db.execute('DROP INDEX IF EXISTS idx_template_segment_order');
+            await db.execute(
+              'ALTER TABLE template_segment RENAME TO template_segment_v5',
+            );
+            await db.execute(DatabaseSchema.createTemplateSegment);
+            await db.execute('''
 INSERT INTO template_segment (
-  id, template_id, station_type, sequence_index, distance_meters
+  id, template_id, segment_kind, station_type, sequence_index,
+  target_distance_meters
 )
-SELECT id, template_id, station_type, sequence_index, distance_meters
+SELECT id, template_id, 'station', station_type, sequence_index, distance_meters
 FROM template_segment_v5
 ''');
-          await db.execute('DROP TABLE template_segment_v5');
-          await db.execute(
-            'CREATE INDEX idx_template_segment_order '
-            'ON template_segment(template_id, sequence_index)',
-          );
-          if (!await _hasColumn(
-            db,
-            'station_record',
-            'resistance_level',
-          )) {
+            await db.execute('DROP TABLE template_segment_v5');
+            await db.execute(
+              'CREATE INDEX idx_template_segment_order '
+              'ON template_segment(template_id, sequence_index)',
+            );
+          }
+          if (await _hasColumn(db, 'station_record', 'distance_meters') &&
+              !await _hasColumn(
+                db,
+                'station_record',
+                'resistance_level',
+              )) {
             await db.execute(
               'ALTER TABLE station_record '
               'ADD COLUMN resistance_level INTEGER',
@@ -230,6 +239,132 @@ FROM template_segment_v5
             );
           }
         }
+        if (oldVersion < 8) {
+          if (!await _hasColumn(
+            db,
+            'training_template',
+            'template_type',
+          )) {
+            await db.execute(
+              'ALTER TABLE training_template ADD COLUMN template_type TEXT '
+              "NOT NULL DEFAULT 'other'",
+            );
+          }
+          await db.update(
+            'training_template',
+            {'template_type': 'hyrox_race'},
+            where: 'is_built_in = 1',
+          );
+
+          if (await _hasColumn(
+            db,
+            'template_segment',
+            'distance_meters',
+          )) {
+            await db.execute('DROP INDEX IF EXISTS idx_template_segment_order');
+            await db.execute(
+              'ALTER TABLE template_segment RENAME TO template_segment_v7',
+            );
+            await db.execute(DatabaseSchema.createTemplateSegment);
+            await db.execute('''
+INSERT INTO template_segment (
+  id, template_id, segment_kind, station_type, sequence_index,
+  target_distance_meters, target_resistance_level,
+  target_weight_kg, target_repetitions
+)
+SELECT
+  id, template_id, 'station', station_type, sequence_index,
+  distance_meters, resistance_level, weight_kg, repetitions
+FROM template_segment_v7
+''');
+            await db.execute('DROP TABLE template_segment_v7');
+            await db.execute(
+              'CREATE INDEX idx_template_segment_order '
+              'ON template_segment(template_id, sequence_index)',
+            );
+          }
+
+          if (await _hasColumn(db, 'station_record', 'distance_meters')) {
+            await db.execute('DROP INDEX IF EXISTS idx_station_session');
+            await db.execute(
+              'ALTER TABLE station_record RENAME TO station_record_v7',
+            );
+            await db.execute(DatabaseSchema.createStationRecord);
+            await db.execute('''
+INSERT INTO station_record (
+  id, session_id, segment_kind, station_type, run_number, sequence_index,
+  status, started_at_ms, ended_at_ms, duration_ms, accumulated_ms,
+  athlete, athlete_name, target_distance_meters,
+  target_resistance_level, target_weight_kg, target_repetitions,
+  transition_started_at_ms, transition_ended_at_ms,
+  transition_duration_ms, remark
+)
+SELECT
+  id, session_id, 'station', station_type, run_number, sequence_index,
+  status, started_at_ms, ended_at_ms, duration_ms, accumulated_ms,
+  athlete, athlete_name, distance_meters, resistance_level, weight_kg,
+  repetitions, transition_started_at_ms, transition_ended_at_ms,
+  transition_duration_ms, remark
+FROM station_record_v7
+''');
+            await db.execute('DROP TABLE station_record_v7');
+            await db.execute(
+              'CREATE INDEX idx_station_session '
+              'ON station_record(session_id, sequence_index)',
+            );
+          }
+
+          await db.execute(DatabaseSchema.createHeartRateImport);
+          await db.execute('''
+INSERT INTO heart_rate_import (
+  session_id, source, external_activity_id, imported_at_ms,
+  sample_count, avg_heart_rate, max_heart_rate, is_active
+)
+SELECT
+  sample.session_id,
+  MIN(sample.source),
+  session.heart_rate_external_id,
+  COALESCE(session.heart_rate_imported_at_ms, session.updated_at_ms),
+  COUNT(*),
+  CAST(ROUND(AVG(sample.heart_rate_bpm)) AS INTEGER),
+  MAX(sample.heart_rate_bpm),
+  1
+FROM heart_rate_sample sample
+JOIN training_session session ON session.id = sample.session_id
+GROUP BY sample.session_id
+''');
+          await db.execute('DROP INDEX IF EXISTS idx_hr_session_time');
+          await db.execute(
+            'ALTER TABLE heart_rate_sample RENAME TO heart_rate_sample_v7',
+          );
+          await db.execute(DatabaseSchema.createHeartRateSample);
+          await db.execute('''
+INSERT INTO heart_rate_sample (
+  id, session_id, import_batch_id, timestamp_ms,
+  heart_rate_bpm, speed_mps, cadence_rpm
+)
+SELECT
+  sample.id, sample.session_id, import_batch.id, sample.timestamp_ms,
+  sample.heart_rate_bpm, sample.speed_mps, sample.cadence_rpm
+FROM heart_rate_sample_v7 sample
+JOIN heart_rate_import import_batch
+  ON import_batch.session_id = sample.session_id
+ AND import_batch.is_active = 1
+''');
+          await db.execute('DROP TABLE heart_rate_sample_v7');
+          await db.execute(
+            'CREATE INDEX idx_hr_session_time '
+            'ON heart_rate_sample(session_id, timestamp_ms)',
+          );
+          await db.execute(
+            'CREATE INDEX idx_hr_import_session '
+            'ON heart_rate_import(session_id, imported_at_ms DESC)',
+          );
+          await db.execute(
+            'CREATE UNIQUE INDEX idx_active_hr_import '
+            'ON heart_rate_import(session_id) WHERE is_active = 1',
+          );
+        }
       },
     );
   }
@@ -238,6 +373,7 @@ FROM template_segment_v5
     final now = DateTime.now().toUtc().millisecondsSinceEpoch;
     final templateId = await db.insert('training_template', {
       'name': '标准 HYROX 模拟',
+      'template_type': 'hyrox_race',
       'is_built_in': 1,
       'created_at_ms': now,
       'updated_at_ms': now,
@@ -250,7 +386,7 @@ FROM template_segment_v5
         'template_id': templateId,
         'station_type': segment.type,
         'sequence_index': index,
-        'distance_meters': segment.distance,
+        'target_distance_meters': segment.distance,
       });
     }
     return templateId;
@@ -261,6 +397,7 @@ FROM template_segment_v5
     for (final definition in DatabaseSchema.builtInTemplates) {
       final templateId = await db.insert('training_template', {
         'name': definition.name,
+        'template_type': 'hyrox_race',
         'is_built_in': 1,
         'created_at_ms': now,
         'updated_at_ms': now,
@@ -293,13 +430,18 @@ FROM template_segment_v5
                 ? builtIns.first['id']! as int
                 : await db.insert('training_template', {
                     'name': menOpen.name,
+                    'template_type': 'hyrox_race',
                     'is_built_in': 1,
                     'created_at_ms': now,
                     'updated_at_ms': now,
                   });
     await db.update(
       'training_template',
-      {'name': menOpen.name, 'updated_at_ms': now},
+      {
+        'name': menOpen.name,
+        'template_type': 'hyrox_race',
+        'updated_at_ms': now,
+      },
       where: 'id = ?',
       whereArgs: [menOpenId],
     );
@@ -311,6 +453,7 @@ FROM template_segment_v5
           ? existing.first['id']! as int
           : await db.insert('training_template', {
               'name': definition.name,
+              'template_type': 'hyrox_race',
               'is_built_in': 1,
               'created_at_ms': now,
               'updated_at_ms': now,
@@ -342,11 +485,12 @@ FROM template_segment_v5
       await db.insert('template_segment', {
         'template_id': templateId,
         'station_type': segment.type,
+        'segment_kind': 'station',
         'sequence_index': index,
-        'distance_meters': segment.distanceMeters,
-        'resistance_level': segment.resistanceLevel,
-        'weight_kg': segment.weightKg,
-        'repetitions': segment.repetitions,
+        'target_distance_meters': segment.distanceMeters,
+        'target_resistance_level': segment.resistanceLevel,
+        'target_weight_kg': segment.weightKg,
+        'target_repetitions': segment.repetitions,
       });
     }
   }

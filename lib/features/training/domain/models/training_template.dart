@@ -1,9 +1,22 @@
 import 'training_models.dart';
 
+enum TemplateType { hyroxRace, workout, interval, strength, other }
+
+extension TemplateTypeLabel on TemplateType {
+  String get label => switch (this) {
+        TemplateType.hyroxRace => 'HYROX 比赛',
+        TemplateType.workout => '综合训练',
+        TemplateType.interval => '间歇训练',
+        TemplateType.strength => '力量训练',
+        TemplateType.other => '其他',
+      };
+}
+
 final class TrainingTemplate {
   const TrainingTemplate({
     required this.id,
     required this.name,
+    required this.type,
     required this.isBuiltIn,
     required this.segments,
     required this.createdAt,
@@ -12,6 +25,7 @@ final class TrainingTemplate {
 
   final int id;
   final String name;
+  final TemplateType type;
   final bool isBuiltIn;
   final List<TemplateSegment> segments;
   final DateTime createdAt;
@@ -24,51 +38,55 @@ final class TemplateSegment {
     required this.templateId,
     required this.type,
     required this.sequenceIndex,
-    this.distanceMeters,
-    this.resistanceLevel,
-    this.weightKg,
-    this.repetitions,
+    this.segmentKind = TrainingSegmentKind.station,
+    this.targetDistanceMeters,
+    this.targetResistanceLevel,
+    this.targetWeightKg,
+    this.targetRepetitions,
   });
 
   final int id;
   final int templateId;
   final StationType type;
   final int sequenceIndex;
-  final int? distanceMeters;
-  final int? resistanceLevel;
-  final double? weightKg;
-  final int? repetitions;
+  final TrainingSegmentKind segmentKind;
+  final int? targetDistanceMeters;
+  final int? targetResistanceLevel;
+  final double? targetWeightKg;
+  final int? targetRepetitions;
 
   String get displayName => formatStationSpecification(
         type: type,
-        distanceMeters: distanceMeters,
-        resistanceLevel: resistanceLevel,
-        weightKg: weightKg,
-        repetitions: repetitions,
+        distanceMeters: targetDistanceMeters,
+        resistanceLevel: targetResistanceLevel,
+        weightKg: targetWeightKg,
+        repetitions: targetRepetitions,
       );
 }
 
 final class TemplateSegmentInput {
   const TemplateSegmentInput({
     required this.type,
-    this.distanceMeters,
-    this.resistanceLevel,
-    this.weightKg,
-    this.repetitions,
+    this.segmentKind = TrainingSegmentKind.station,
+    this.targetDistanceMeters,
+    this.targetResistanceLevel,
+    this.targetWeightKg,
+    this.targetRepetitions,
   });
 
   final StationType type;
-  final int? distanceMeters;
-  final int? resistanceLevel;
-  final double? weightKg;
-  final int? repetitions;
+  final TrainingSegmentKind segmentKind;
+  final int? targetDistanceMeters;
+  final int? targetResistanceLevel;
+  final double? targetWeightKg;
+  final int? targetRepetitions;
 
   String get displayName => formatStationSpecification(
         type: type,
-        distanceMeters: distanceMeters,
-        resistanceLevel: resistanceLevel,
-        weightKg: weightKg,
-        repetitions: repetitions,
+        distanceMeters: targetDistanceMeters,
+        resistanceLevel: targetResistanceLevel,
+        weightKg: targetWeightKg,
+        repetitions: targetRepetitions,
       );
 }
 

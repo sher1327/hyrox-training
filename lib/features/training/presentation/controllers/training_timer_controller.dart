@@ -148,6 +148,32 @@ final class TrainingTimerController
     }
   }
 
+  Future<void> updateActualPerformance(
+    int stationId,
+    StationActualPerformance actualPerformance,
+  ) async {
+    final value = state.requireValue;
+    if (value.isSaving) return;
+    state = AsyncData(value.copyWith(isSaving: true));
+    try {
+      await _repository.updateStationActualPerformance(
+        stationId: stationId,
+        actualPerformance: actualPerformance,
+      );
+      final refreshed = await _repository.listStations(value.session.id);
+      state = AsyncData(
+        value.copyWith(
+          stations: refreshed,
+          now: _clock.now(),
+          isSaving: false,
+        ),
+      );
+    } catch (_) {
+      state = AsyncData(value.copyWith(isSaving: false));
+      rethrow;
+    }
+  }
+
   Future<void> cancelTraining() async {
     final value = state.requireValue;
     if (value.isSaving) return;
@@ -188,6 +214,9 @@ final class TrainingTimerController
         athleteName: value.selectedAthleteName,
         skipped: skip,
         startTransition: startTransition && !completed,
+        actualPerformance: skip
+            ? const StationActualPerformance()
+            : StationActualPerformance.fromTarget(current),
       );
       if (completed) {
         _ticker?.cancel();

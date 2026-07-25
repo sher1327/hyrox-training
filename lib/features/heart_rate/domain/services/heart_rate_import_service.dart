@@ -24,6 +24,7 @@ final class HeartRateImportService {
         samples: samples,
         source: HeartRateSources.fit,
         externalActivityId: fileName,
+        fileName: fileName,
       );
 
   Future<List<IntervalsActivity>> findIntervalsActivities({
@@ -57,6 +58,7 @@ final class HeartRateImportService {
       samples: samples,
       source: HeartRateSources.intervalsIcu,
       externalActivityId: activity.id,
+      externalActivityName: activity.name,
     );
   }
 
@@ -65,6 +67,8 @@ final class HeartRateImportService {
     required List<HeartRateSample> samples,
     required String source,
     required String externalActivityId,
+    String? externalActivityName,
+    String? fileName,
   }) async {
     final range = _sessionRange(session);
     final byTimestamp = <int, HeartRateSample>{};
@@ -81,17 +85,20 @@ final class HeartRateImportService {
       throw StateError('心率记录与这场训练的时间范围没有重叠');
     }
     final summary = HeartRateSummary.fromSamples(cropped)!;
-    await _repository.replaceSamples(
+    final importBatchId = await _repository.replaceSamples(
       sessionId: session.id,
       samples: cropped,
       source: source,
       externalActivityId: externalActivityId,
+      externalActivityName: externalActivityName,
+      fileName: fileName,
     );
     return HeartRateImportResult(
       source: source,
       sampleCount: summary.sampleCount,
       average: summary.average,
       maximum: summary.maximum,
+      importBatchId: importBatchId,
       externalActivityId: externalActivityId,
     );
   }

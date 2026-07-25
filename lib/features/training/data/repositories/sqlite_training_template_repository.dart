@@ -28,12 +28,14 @@ final class SqliteTrainingTemplateRepository
   @override
   Future<int> createTemplate({
     required String name,
+    required TemplateType type,
     required List<TemplateSegmentInput> segments,
     required DateTime createdAt,
   }) {
     _validate(name, segments);
     return _dao.createTemplate(
       name: name.trim(),
+      type: type,
       segments: segments,
       createdAt: createdAt,
     );
@@ -43,6 +45,7 @@ final class SqliteTrainingTemplateRepository
   Future<void> updateTemplate({
     required int templateId,
     required String name,
+    required TemplateType type,
     required List<TemplateSegmentInput> segments,
     required DateTime updatedAt,
   }) {
@@ -50,6 +53,7 @@ final class SqliteTrainingTemplateRepository
     return _dao.updateTemplate(
       templateId: templateId,
       name: name.trim(),
+      type: type,
       segments: segments,
       updatedAt: updatedAt,
     );
@@ -65,6 +69,7 @@ final class SqliteTrainingTemplateRepository
     return TrainingTemplate(
       id: templateId,
       name: row['name']! as String,
+      type: _templateType(row['template_type']! as String),
       isBuiltIn: (row['is_built_in']! as int) == 1,
       segments: segmentRows.map(_mapSegment).toList(growable: false),
       createdAt: _date(row['created_at_ms']! as int),
@@ -77,10 +82,13 @@ final class SqliteTrainingTemplateRepository
         templateId: row['template_id']! as int,
         type: _stationType(row['station_type']! as String),
         sequenceIndex: row['sequence_index']! as int,
-        distanceMeters: row['distance_meters'] as int?,
-        resistanceLevel: row['resistance_level'] as int?,
-        weightKg: (row['weight_kg'] as num?)?.toDouble(),
-        repetitions: row['repetitions'] as int?,
+        segmentKind: TrainingSegmentKind.values.byName(
+          row['segment_kind']! as String,
+        ),
+        targetDistanceMeters: row['target_distance_meters'] as int?,
+        targetResistanceLevel: row['target_resistance_level'] as int?,
+        targetWeightKg: (row['target_weight_kg'] as num?)?.toDouble(),
+        targetRepetitions: row['target_repetitions'] as int?,
       );
 
   void _validate(String name, List<TemplateSegmentInput> segments) {
@@ -88,19 +96,23 @@ final class SqliteTrainingTemplateRepository
     if (segments.isEmpty) throw ArgumentError('模板至少需要一个训练项目');
     for (final segment in segments) {
       if (segment.type == StationType.run &&
-          (segment.distanceMeters == null || segment.distanceMeters! <= 0)) {
+          (segment.targetDistanceMeters == null ||
+              segment.targetDistanceMeters! <= 0)) {
         throw ArgumentError('跑步距离必须大于 0 米');
       }
-      if (segment.distanceMeters != null && segment.distanceMeters! <= 0) {
+      if (segment.targetDistanceMeters != null &&
+          segment.targetDistanceMeters! <= 0) {
         throw ArgumentError('项目距离必须大于 0 米');
       }
-      if (segment.resistanceLevel != null && segment.resistanceLevel! <= 0) {
+      if (segment.targetResistanceLevel != null &&
+          segment.targetResistanceLevel! <= 0) {
         throw ArgumentError('阻力必须大于 0');
       }
-      if (segment.weightKg != null && segment.weightKg! <= 0) {
+      if (segment.targetWeightKg != null && segment.targetWeightKg! <= 0) {
         throw ArgumentError('重量必须大于 0 kg');
       }
-      if (segment.repetitions != null && segment.repetitions! <= 0) {
+      if (segment.targetRepetitions != null &&
+          segment.targetRepetitions! <= 0) {
         throw ArgumentError('次数必须大于 0');
       }
       final allowsDistance = segment.type != StationType.wallBall;
@@ -113,10 +125,10 @@ final class SqliteTrainingTemplateRepository
           segment.type == StationType.wallBall;
       final allowsRepetitions = segment.type == StationType.burpeeBroadJump ||
           segment.type == StationType.wallBall;
-      if (!allowsDistance && segment.distanceMeters != null ||
-          !allowsResistance && segment.resistanceLevel != null ||
-          !allowsWeight && segment.weightKg != null ||
-          !allowsRepetitions && segment.repetitions != null) {
+      if (!allowsDistance && segment.targetDistanceMeters != null ||
+          !allowsResistance && segment.targetResistanceLevel != null ||
+          !allowsWeight && segment.targetWeightKg != null ||
+          !allowsRepetitions && segment.targetRepetitions != null) {
         throw ArgumentError('${segment.type.label} 包含不支持的参数');
       }
     }
@@ -137,4 +149,13 @@ StationType _stationType(String value) => switch (value) {
       'sandbag_lunge' => StationType.sandbagLunge,
       'wall_ball' => StationType.wallBall,
       _ => throw FormatException('Unknown station type: $value'),
+    };
+
+TemplateType _templateType(String value) => switch (value) {
+      'hyrox_race' => TemplateType.hyroxRace,
+      'workout' => TemplateType.workout,
+      'interval' => TemplateType.interval,
+      'strength' => TemplateType.strength,
+      'other' => TemplateType.other,
+      _ => TemplateType.other,
     };

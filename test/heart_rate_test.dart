@@ -189,6 +189,7 @@ void main() {
     );
 
     expect(result.sampleCount, 2);
+    expect(result.importBatchId, 1);
     expect(repository.samples.map((sample) => sample.bpm), [100, 140]);
     expect(repository.externalActivityId, 'activity.fit');
   });
@@ -202,13 +203,16 @@ final class _MemoryHeartRateRepository implements HeartRateRepository {
   Future<List<HeartRateSample>> listSamples(int sessionId) async => samples;
 
   @override
-  Future<void> replaceSamples({
+  Future<int> replaceSamples({
     required int sessionId,
     required List<HeartRateSample> samples,
     required String source,
     String? externalActivityId,
+    String? externalActivityName,
+    String? fileName,
   }) async {
     this.samples = [...samples];
     this.externalActivityId = externalActivityId;
+    return 1;
   }
 }

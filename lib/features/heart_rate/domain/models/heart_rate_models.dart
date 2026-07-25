@@ -5,11 +5,41 @@ final class HeartRateSample {
     required this.timestamp,
     required this.bpm,
     this.source,
+    this.importBatchId,
   });
 
   final DateTime timestamp;
   final int bpm;
   final String? source;
+  final int? importBatchId;
+}
+
+final class HeartRateImportBatch {
+  const HeartRateImportBatch({
+    required this.id,
+    required this.sessionId,
+    required this.source,
+    required this.importedAt,
+    required this.sampleCount,
+    required this.average,
+    required this.maximum,
+    required this.isActive,
+    this.externalActivityId,
+    this.externalActivityName,
+    this.fileName,
+  });
+
+  final int id;
+  final int sessionId;
+  final String source;
+  final String? externalActivityId;
+  final String? externalActivityName;
+  final String? fileName;
+  final DateTime importedAt;
+  final int sampleCount;
+  final int average;
+  final int maximum;
+  final bool isActive;
 }
 
 final class HeartRateSummary {
@@ -86,6 +116,7 @@ final class HeartRateImportResult {
     required this.sampleCount,
     required this.average,
     required this.maximum,
+    required this.importBatchId,
     this.externalActivityId,
   });
 
@@ -93,6 +124,7 @@ final class HeartRateImportResult {
   final int sampleCount;
   final int average;
   final int maximum;
+  final int importBatchId;
   final String? externalActivityId;
 }
 

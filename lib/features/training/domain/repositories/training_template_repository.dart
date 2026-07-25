@@ -6,6 +6,7 @@ abstract interface class TrainingTemplateRepository {
 
   Future<int> createTemplate({
     required String name,
+    required TemplateType type,
     required List<TemplateSegmentInput> segments,
     required DateTime createdAt,
   });
@@ -13,6 +14,7 @@ abstract interface class TrainingTemplateRepository {
   Future<void> updateTemplate({
     required int templateId,
     required String name,
+    required TemplateType type,
     required List<TemplateSegmentInput> segments,
     required DateTime updatedAt,
   });

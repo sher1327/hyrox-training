@@ -11,6 +11,7 @@ import '../../domain/models/training_models.dart';
 import '../../domain/models/training_report.dart';
 import '../controllers/training_providers.dart';
 import '../formatters/training_formatters.dart';
+import '../widgets/station_actual_editor.dart';
 
 class TrainingDetailPage extends ConsumerWidget {
   const TrainingDetailPage({
@@ -110,10 +111,40 @@ class TrainingDetailPage extends ConsumerWidget {
                   importing: importing,
                   onImportHeartRate: () =>
                       _showHeartRateImportOptions(context, ref, value.session),
+                  onEditActual: (station) => _editActual(context, ref, station),
                 ),
         ),
       ),
     );
+  }
+
+  Future<void> _editActual(
+    BuildContext context,
+    WidgetRef ref,
+    StationRecord station,
+  ) async {
+    final actual = await showStationActualEditor(context, station);
+    if (actual == null || !context.mounted) return;
+    try {
+      final repository =
+          await ref.read(trainingRepositoryFutureProvider.future);
+      await repository.updateStationActualPerformance(
+        stationId: station.id,
+        actualPerformance: actual,
+      );
+      ref.invalidate(trainingReportProvider(sessionId));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('实际完成数据已更新')),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存失败：$error')),
+        );
+      }
+    }
   }
 
   Future<void> _showHeartRateImportOptions(
@@ -131,7 +162,7 @@ class TrainingDetailPage extends ConsumerWidget {
           children: [
             const ListTile(
               title: Text('导入心率'),
-              subtitle: Text('重新导入会替换这场训练原有的心率数据'),
+              subtitle: Text('新数据会用于当前分析，历史导入批次仍会保留'),
             ),
             ListTile(
               leading: const Icon(Icons.insert_drive_file_outlined),
@@ -528,12 +559,14 @@ class _ReportBody extends StatelessWidget {
     required this.heartRate,
     required this.importing,
     required this.onImportHeartRate,
+    required this.onEditActual,
   });
 
   final TrainingReport report;
   final AsyncValue<HeartRateAnalysis> heartRate;
   final bool importing;
   final VoidCallback onImportHeartRate;
+  final ValueChanged<StationRecord> onEditActual;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -642,6 +675,9 @@ class _ReportBody extends StatelessWidget {
               station: station,
               partnerName: report.session.partnerName,
               heartRate: heartRate.valueOrNull?.byStationId[station.id],
+              onEditActual: station.status == SegmentStatus.completed
+                  ? () => onEditActual(station)
+                  : null,
             ),
           ),
           if (report.session.note?.isNotEmpty ?? false) ...[
@@ -714,11 +750,13 @@ class _StationRow extends StatelessWidget {
     required this.station,
     required this.partnerName,
     required this.heartRate,
+    required this.onEditActual,
   });
 
   final StationRecord station;
   final String? partnerName;
   final HeartRateSummary? heartRate;
+  final VoidCallback? onEditActual;
 
   @override
   Widget build(BuildContext context) {
@@ -746,6 +784,15 @@ class _StationRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(station.displayName),
+                  if (station.actualSpecification != null)
+                    Text(
+                      station.actualSpecification!,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: station.actualMatchesTarget
+                                ? Colors.greenAccent.shade100
+                                : Colors.orangeAccent.shade100,
+                          ),
+                    ),
                   if (station.athleteName != null || station.athlete != null)
                     Text(
                       station.athleteName ??
@@ -774,15 +821,27 @@ class _StationRow extends StatelessWidget {
                 ],
               ),
             ),
-            Text(
-              skipped
-                  ? '已跳过'
-                  : formatDuration(station.duration, includeHours: false),
-              style: TextStyle(
-                color: skipped ? Colors.white38 : Colors.white,
-                fontWeight: FontWeight.w700,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  skipped
+                      ? '已跳过'
+                      : formatDuration(station.duration, includeHours: false),
+                  style: TextStyle(
+                    color: skipped ? Colors.white38 : Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+                if (onEditActual != null)
+                  IconButton(
+                    tooltip: '修改实际数据',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: onEditActual,
+                    icon: const Icon(Icons.edit_note_rounded, size: 20),
+                  ),
+              ],
             ),
           ],
         ),

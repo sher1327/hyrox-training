@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../domain/models/training_models.dart';
 import '../controllers/training_timer_controller.dart';
 import '../formatters/training_formatters.dart';
+import '../widgets/station_actual_editor.dart';
 
 class TrainingTimerPage extends ConsumerStatefulWidget {
   const TrainingTimerPage({required this.sessionId, super.key});
@@ -105,6 +106,7 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
                 return _TransitionTimerBody(
                   state: value,
                   onStartNext: _startNextAfterTransition,
+                  onEditActual: () => _editActual(value.transitionSource!),
                 );
               }
               return Center(
@@ -252,6 +254,18 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
     }
   }
 
+  Future<void> _editActual(StationRecord station) async {
+    final actual = await showStationActualEditor(context, station);
+    if (actual == null || !mounted) return;
+    try {
+      await ref
+          .read(trainingTimerProvider(sessionId).notifier)
+          .updateActualPerformance(station.id, actual);
+    } catch (error) {
+      _showError('保存实际数据失败：$error');
+    }
+  }
+
   Future<bool?> _chooseNextStep(TrainingTimerState value) async {
     final current = value.current;
     if (current == null) return null;
@@ -391,10 +405,12 @@ class _TransitionTimerBody extends StatelessWidget {
   const _TransitionTimerBody({
     required this.state,
     required this.onStartNext,
+    required this.onEditActual,
   });
 
   final TrainingTimerState state;
   final Future<void> Function() onStartNext;
+  final Future<void> Function() onEditActual;
 
   @override
   Widget build(BuildContext context) {
@@ -456,6 +472,12 @@ class _TransitionTimerBody extends StatelessWidget {
             const SizedBox(height: 16),
             _ProgressDots(stations: state.stations),
             const Spacer(),
+            OutlinedButton.icon(
+              onPressed: state.isSaving ? null : onEditActual,
+              icon: const Icon(Icons.edit_note_rounded),
+              label: const Text('修改上一项实际完成数据'),
+            ),
+            const SizedBox(height: 10),
             FilledButton.icon(
               onPressed: state.isSaving ? null : onStartNext,
               icon: const Icon(Icons.play_arrow_rounded),

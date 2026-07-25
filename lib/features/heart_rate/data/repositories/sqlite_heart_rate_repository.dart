@@ -19,22 +19,27 @@ final class SqliteHeartRateRepository implements HeartRateRepository {
             ),
             bpm: row['heart_rate_bpm']! as int,
             source: row['source']! as String,
+            importBatchId: row['import_batch_id']! as int,
           ),
         )
         .toList();
   }
 
   @override
-  Future<void> replaceSamples({
+  Future<int> replaceSamples({
     required int sessionId,
     required List<HeartRateSample> samples,
     required String source,
     String? externalActivityId,
+    String? externalActivityName,
+    String? fileName,
   }) =>
       dao.replaceSamples(
         sessionId: sessionId,
         samples: samples,
         source: source,
         externalActivityId: externalActivityId,
+        externalActivityName: externalActivityName,
+        fileName: fileName,
       );
 }

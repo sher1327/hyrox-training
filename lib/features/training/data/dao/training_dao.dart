@@ -47,15 +47,16 @@ final class TrainingDao {
         await txn.insert('station_record', {
           'session_id': sessionId,
           'station_type': _stationTypeToDb(segment.type),
+          'segment_kind': segment.segmentKind.name,
           'run_number': segment.type == StationType.run ? runNumber : null,
           'sequence_index': index,
           'status': index == 0 ? 'active' : 'pending',
           'started_at_ms': index == 0 ? now : null,
           'accumulated_ms': 0,
-          'distance_meters': segment.distanceMeters,
-          'resistance_level': segment.resistanceLevel,
-          'weight_kg': segment.weightKg,
-          'repetitions': segment.repetitions,
+          'target_distance_meters': segment.targetDistanceMeters,
+          'target_resistance_level': segment.targetResistanceLevel,
+          'target_weight_kg': segment.targetWeightKg,
+          'target_repetitions': segment.targetRepetitions,
         });
       }
       return sessionId;
@@ -138,6 +139,7 @@ final class TrainingDao {
     required String athleteName,
     required bool skipped,
     required bool startTransition,
+    required StationActualPerformance actualPerformance,
   }) =>
       db.transaction((txn) async {
         final endedAtMs = endedAt.millisecondsSinceEpoch;
@@ -153,6 +155,10 @@ final class TrainingDao {
               _ => 'partner',
             },
             'athlete_name': athleteName,
+            'actual_distance_meters': actualPerformance.distanceMeters,
+            'actual_resistance_level': actualPerformance.resistanceLevel,
+            'actual_weight_kg': actualPerformance.weightKg,
+            'actual_repetitions': actualPerformance.repetitions,
           },
           if (nextStationId != null && startTransition)
             'transition_started_at_ms': endedAtMs,
@@ -183,6 +189,24 @@ final class TrainingDao {
           if (activated != 1) throw StateError('下一项目状态已发生变化');
         }
       });
+
+  Future<void> updateStationActualPerformance({
+    required int stationId,
+    required StationActualPerformance actualPerformance,
+  }) async {
+    final updated = await db.update(
+      'station_record',
+      {
+        'actual_distance_meters': actualPerformance.distanceMeters,
+        'actual_resistance_level': actualPerformance.resistanceLevel,
+        'actual_weight_kg': actualPerformance.weightKg,
+        'actual_repetitions': actualPerformance.repetitions,
+      },
+      where: "id = ? AND status = 'completed'",
+      whereArgs: [stationId],
+    );
+    if (updated != 1) throw StateError('只能填写已完成项目的实际数据');
+  }
 
   Future<void> finishTransitionAndActivateNext({
     required int fromStationId,
