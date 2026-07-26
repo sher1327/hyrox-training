@@ -208,6 +208,101 @@ final class TrainingDao {
     if (updated != 1) throw StateError('只能填写已完成项目的实际数据');
   }
 
+  /// Moves the boundary between two adjacent completed segments.
+  ///
+  /// The operation is atomic. It never changes heart-rate samples; consumers
+  /// recalculate segment summaries from the corrected timestamps.
+  Future<void> correctStationBoundary({
+    required int sessionId,
+    required int previousStationId,
+    required int nextStationId,
+    required DateTime boundaryAt,
+    required DateTime updatedAt,
+  }) =>
+      db.transaction((txn) async {
+        final sessions = await txn.query(
+          'training_session',
+          columns: ['status', 'started_at_ms', 'ended_at_ms'],
+          where: 'id = ?',
+          whereArgs: [sessionId],
+          limit: 1,
+        );
+        if (sessions.isEmpty) throw StateError('训练记录不存在');
+        final session = sessions.single;
+        if (session['status'] == 'in_progress') {
+          throw StateError('进行中的训练不能修正历史分段');
+        }
+
+        final rows = await txn.query(
+          'station_record',
+          where: 'session_id = ? AND id IN (?, ?)',
+          whereArgs: [sessionId, previousStationId, nextStationId],
+        );
+        if (rows.length != 2) throw StateError('需要修正的分段不存在');
+        final previous = rows.singleWhere(
+          (row) => row['id'] == previousStationId,
+        );
+        final next = rows.singleWhere((row) => row['id'] == nextStationId);
+        if ((next['sequence_index']! as int) !=
+            (previous['sequence_index']! as int) + 1) {
+          throw StateError('只能修正相邻分段的交界时间');
+        }
+        if (previous['status'] != 'completed' ||
+            next['status'] != 'completed') {
+          throw StateError('只能修正两个已完成分段之间的时间');
+        }
+
+        final previousStartedAtMs = previous['started_at_ms'] as int?;
+        final nextEndedAtMs = next['ended_at_ms'] as int?;
+        if (previousStartedAtMs == null || nextEndedAtMs == null) {
+          throw StateError('分段缺少完整计时，无法修正');
+        }
+        final boundaryAtMs = boundaryAt.millisecondsSinceEpoch;
+        final sessionStartedAtMs = session['started_at_ms'] as int?;
+        final sessionEndedAtMs = session['ended_at_ms'] as int?;
+        if (boundaryAtMs <= previousStartedAtMs ||
+            boundaryAtMs >= nextEndedAtMs ||
+            (sessionStartedAtMs != null && boundaryAtMs < sessionStartedAtMs) ||
+            (sessionEndedAtMs != null && boundaryAtMs > sessionEndedAtMs)) {
+          throw StateError('交界时间必须位于两个分段的有效范围内');
+        }
+
+        final previousDurationMs = boundaryAtMs - previousStartedAtMs;
+        final nextDurationMs = nextEndedAtMs - boundaryAtMs;
+        final previousUpdated = await txn.update(
+          'station_record',
+          {
+            'ended_at_ms': boundaryAtMs,
+            'duration_ms': previousDurationMs,
+            'accumulated_ms': previousDurationMs,
+            'transition_started_at_ms': null,
+            'transition_ended_at_ms': null,
+            'transition_duration_ms': null,
+          },
+          where: "id = ? AND session_id = ? AND status = 'completed'",
+          whereArgs: [previousStationId, sessionId],
+        );
+        final nextUpdated = await txn.update(
+          'station_record',
+          {
+            'started_at_ms': boundaryAtMs,
+            'duration_ms': nextDurationMs,
+            'accumulated_ms': nextDurationMs,
+          },
+          where: "id = ? AND session_id = ? AND status = 'completed'",
+          whereArgs: [nextStationId, sessionId],
+        );
+        if (previousUpdated != 1 || nextUpdated != 1) {
+          throw StateError('分段状态已变化，请刷新后重试');
+        }
+        await txn.update(
+          'training_session',
+          {'updated_at_ms': updatedAt.millisecondsSinceEpoch},
+          where: 'id = ?',
+          whereArgs: [sessionId],
+        );
+      });
+
   Future<void> finishTransitionAndActivateNext({
     required int fromStationId,
     required int nextStationId,

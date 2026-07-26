@@ -14,6 +14,7 @@ import '../../domain/models/training_report.dart';
 import '../controllers/training_providers.dart';
 import '../formatters/training_formatters.dart';
 import '../widgets/station_actual_editor.dart';
+import '../widgets/station_boundary_editor.dart';
 
 class TrainingDetailPage extends ConsumerWidget {
   const TrainingDetailPage({
@@ -117,6 +118,9 @@ class TrainingDetailPage extends ConsumerWidget {
                       _showHeartRateImportOptions(context, ref, value.session),
                   onReplay: () => context.push('/training/$sessionId/replay'),
                   onExportReplay: () => _exportReplay(context, ref),
+                  onCorrectTiming: stationCorrectionBoundaries(value).isEmpty
+                      ? null
+                      : () => _correctStationBoundary(context, ref, value),
                   onUndoFinalCompletion: returnHomeOnBack &&
                           value.session.status == TrainingStatus.completed
                       ? () => _undoFinalCompletion(context, ref, value)
@@ -126,6 +130,119 @@ class TrainingDetailPage extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _correctStationBoundary(
+    BuildContext context,
+    WidgetRef ref,
+    TrainingReport report,
+  ) async {
+    if (stationCorrectionBoundaries(report).isEmpty ||
+        report.session.startedAt == null) {
+      return;
+    }
+    final selected = await showStationBoundaryPicker(
+      context,
+      report: report,
+    );
+    if (selected == null || !context.mounted) return;
+    HeartRateAnalysis analysis;
+    try {
+      analysis = await ref.read(heartRateAnalysisProvider(sessionId).future);
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('读取心率失败：${_friendlyError(error)}')),
+      );
+      return;
+    }
+    if (!context.mounted) return;
+    final correctedAt = await showStationBoundaryEditor(
+      context,
+      session: report.session,
+      previous: selected.previous,
+      next: selected.next,
+      heartRateSamples: analysis.samples,
+    );
+    if (correctedAt == null || !context.mounted) return;
+
+    final originalBoundary =
+        selected.previous.endedAt == selected.next.startedAt
+            ? selected.previous.endedAt
+            : null;
+    try {
+      final repository =
+          await ref.read(trainingRepositoryFutureProvider.future);
+      await repository.correctStationBoundary(
+        sessionId: sessionId,
+        previousStationId: selected.previous.id,
+        nextStationId: selected.next.id,
+        boundaryAt: correctedAt,
+        updatedAt: ref.read(clockProvider).now(),
+      );
+      _invalidateCorrectedTraining(ref);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('分段时间已修正，分段心率已重新计算'),
+          action: originalBoundary == null
+              ? null
+              : SnackBarAction(
+                  label: '撤销',
+                  onPressed: () => _restoreStationBoundary(
+                    context,
+                    ref,
+                    previousStationId: selected.previous.id,
+                    nextStationId: selected.next.id,
+                    boundaryAt: originalBoundary,
+                  ),
+                ),
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('修正失败：${_friendlyError(error)}')),
+      );
+    }
+  }
+
+  Future<void> _restoreStationBoundary(
+    BuildContext context,
+    WidgetRef ref, {
+    required int previousStationId,
+    required int nextStationId,
+    required DateTime boundaryAt,
+  }) async {
+    try {
+      final repository =
+          await ref.read(trainingRepositoryFutureProvider.future);
+      await repository.correctStationBoundary(
+        sessionId: sessionId,
+        previousStationId: previousStationId,
+        nextStationId: nextStationId,
+        boundaryAt: boundaryAt,
+        updatedAt: ref.read(clockProvider).now(),
+      );
+      _invalidateCorrectedTraining(ref);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已恢复修正前的分段交界')),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('撤销修正失败：${_friendlyError(error)}')),
+        );
+      }
+    }
+  }
+
+  void _invalidateCorrectedTraining(WidgetRef ref) {
+    ref.invalidate(trainingReportProvider(sessionId));
+    ref.invalidate(heartRateAnalysisProvider(sessionId));
+    ref.invalidate(trainingReplayProvider(sessionId));
   }
 
   Future<void> _exportReplay(BuildContext context, WidgetRef ref) async {
@@ -654,6 +771,7 @@ class _ReportBody extends StatelessWidget {
     required this.onImportHeartRate,
     required this.onReplay,
     required this.onExportReplay,
+    required this.onCorrectTiming,
     required this.onUndoFinalCompletion,
     required this.onEditActual,
   });
@@ -665,6 +783,7 @@ class _ReportBody extends StatelessWidget {
   final VoidCallback onImportHeartRate;
   final VoidCallback onReplay;
   final VoidCallback onExportReplay;
+  final VoidCallback? onCorrectTiming;
   final VoidCallback? onUndoFinalCompletion;
   final ValueChanged<StationRecord> onEditActual;
 
@@ -798,6 +917,14 @@ class _ReportBody extends StatelessWidget {
                 : const Icon(Icons.download_rounded),
             label: Text(exporting ? '正在生成长图…' : '导出完整回放'),
           ),
+          if (onCorrectTiming != null) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: onCorrectTiming,
+              icon: const Icon(Icons.edit_calendar_rounded),
+              label: const Text('修正分段时间与心率'),
+            ),
+          ],
           const SizedBox(height: 24),
           Text('项目明细', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 10),

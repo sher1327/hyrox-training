@@ -101,6 +101,22 @@ final class SqliteTrainingRepository implements TrainingRepository {
       );
 
   @override
+  Future<void> correctStationBoundary({
+    required int sessionId,
+    required int previousStationId,
+    required int nextStationId,
+    required DateTime boundaryAt,
+    required DateTime updatedAt,
+  }) =>
+      _dao.correctStationBoundary(
+        sessionId: sessionId,
+        previousStationId: previousStationId,
+        nextStationId: nextStationId,
+        boundaryAt: boundaryAt,
+        updatedAt: updatedAt,
+      );
+
+  @override
   Future<void> finishTransitionAndActivateNext({
     required int fromStationId,
     required int nextStationId,

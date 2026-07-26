@@ -40,6 +40,13 @@ abstract interface class TrainingRepository {
     required int stationId,
     required StationActualPerformance actualPerformance,
   });
+  Future<void> correctStationBoundary({
+    required int sessionId,
+    required int previousStationId,
+    required int nextStationId,
+    required DateTime boundaryAt,
+    required DateTime updatedAt,
+  });
   Future<void> finishTransitionAndActivateNext({
     required int fromStationId,
     required int nextStationId,
