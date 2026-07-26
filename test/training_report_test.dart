@@ -197,6 +197,79 @@ void main() {
     expect(state.isTransitioning, isTrue);
     expect(state.nextAfterTransition?.id, 102);
     expect(state.transitionElapsed, const Duration(minutes: 3, seconds: 17));
+    expect(state.undoCandidate?.id, 101);
+  });
+
+  test('timer can only undo the station immediately before active station', () {
+    final now = DateTime.utc(2026, 7, 26, 8, 10);
+    final state = TrainingTimerState(
+      session: TrainingSession(
+        id: 11,
+        mode: TrainingMode.single,
+        title: '误触恢复测试',
+        status: TrainingStatus.inProgress,
+        startedAt: DateTime.utc(2026, 7, 26, 8),
+      ),
+      stations: [
+        StationRecord(
+          id: 111,
+          sessionId: 11,
+          type: StationType.run,
+          runNumber: 1,
+          sequenceIndex: 0,
+          status: SegmentStatus.completed,
+          startedAt: DateTime.utc(2026, 7, 26, 8),
+          endedAt: DateTime.utc(2026, 7, 26, 8, 5),
+        ),
+        StationRecord(
+          id: 112,
+          sessionId: 11,
+          type: StationType.skiErg,
+          sequenceIndex: 1,
+          status: SegmentStatus.active,
+          startedAt: DateTime.utc(2026, 7, 26, 8, 5),
+        ),
+        const StationRecord(
+          id: 113,
+          sessionId: 11,
+          type: StationType.run,
+          runNumber: 2,
+          sequenceIndex: 2,
+          status: SegmentStatus.pending,
+        ),
+      ],
+      now: now,
+    );
+
+    expect(state.undoCandidate?.id, 111);
+    expect(state.current?.id, 112);
+  });
+
+  test('first active station has no undo candidate', () {
+    final start = DateTime.utc(2026, 7, 26, 8);
+    final state = TrainingTimerState(
+      session: TrainingSession(
+        id: 12,
+        mode: TrainingMode.single,
+        title: '首项测试',
+        status: TrainingStatus.inProgress,
+        startedAt: start,
+      ),
+      stations: [
+        StationRecord(
+          id: 121,
+          sessionId: 12,
+          type: StationType.run,
+          runNumber: 1,
+          sequenceIndex: 0,
+          status: SegmentStatus.active,
+          startedAt: start,
+        ),
+      ],
+      now: start,
+    );
+
+    expect(state.undoCandidate, isNull);
   });
 
   test('custom run record keeps its run number and distance', () {

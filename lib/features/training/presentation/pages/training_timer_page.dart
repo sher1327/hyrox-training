@@ -107,6 +107,7 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
                   state: value,
                   onStartNext: _startNextAfterTransition,
                   onEditActual: () => _editActual(value.transitionSource!),
+                  onUndoCompletion: () => _confirmUndoCompletion(value),
                 );
               }
               return Center(
@@ -212,6 +213,20 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
                       ),
                       const SizedBox(height: 16),
                     ],
+                    if (value.undoCandidate != null) ...[
+                      TextButton.icon(
+                        onPressed: value.isSaving
+                            ? null
+                            : () => _confirmUndoCompletion(value),
+                        icon: const Icon(Icons.undo_rounded),
+                        label: Text(
+                          '撤销上次完成：${value.undoCandidate!.displayName}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                    ],
                     FilledButton(
                       onPressed:
                           value.isSaving ? null : () => _completeCurrent(value),
@@ -263,6 +278,48 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
           .updateActualPerformance(station.id, actual);
     } catch (error) {
       _showError('保存实际数据失败：$error');
+    }
+  }
+
+  Future<void> _confirmUndoCompletion(TrainingTimerState value) async {
+    final candidate = value.undoCandidate;
+    if (candidate == null) return;
+    final activeNext = value.current;
+    final nextElapsed = activeNext?.startedAt == null
+        ? Duration.zero
+        : value.now.difference(activeNext!.startedAt!);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('返回上一项目继续计时？'),
+        content: Text(
+          activeNext == null
+              ? '将撤销“${candidate.displayName}”的完成记录和本次转换计时。'
+                  '项目会从原开始时间继续计时。'
+              : '当前“${activeNext.displayName}”已计时 '
+                  '${formatDuration(nextElapsed, includeHours: false)}。\n\n'
+                  '确认后会清除这段误计时间，并返回“${candidate.displayName}”'
+                  '从原开始时间继续计时。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('保持当前项目'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确认返回'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await ref
+          .read(trainingTimerProvider(sessionId).notifier)
+          .undoLastCompletion();
+    } catch (error) {
+      _showError('撤销完成失败：$error');
     }
   }
 
@@ -406,11 +463,13 @@ class _TransitionTimerBody extends StatelessWidget {
     required this.state,
     required this.onStartNext,
     required this.onEditActual,
+    required this.onUndoCompletion,
   });
 
   final TrainingTimerState state;
   final Future<void> Function() onStartNext;
   final Future<void> Function() onEditActual;
+  final Future<void> Function() onUndoCompletion;
 
   @override
   Widget build(BuildContext context) {
@@ -472,6 +531,12 @@ class _TransitionTimerBody extends StatelessWidget {
             const SizedBox(height: 16),
             _ProgressDots(stations: state.stations),
             const Spacer(),
+            TextButton.icon(
+              onPressed: state.isSaving ? null : onUndoCompletion,
+              icon: const Icon(Icons.undo_rounded),
+              label: Text('撤销完成，继续 ${source.displayName}'),
+            ),
+            const SizedBox(height: 4),
             OutlinedButton.icon(
               onPressed: state.isSaving ? null : onEditActual,
               icon: const Icon(Icons.edit_note_rounded),

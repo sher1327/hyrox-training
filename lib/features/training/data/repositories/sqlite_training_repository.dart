@@ -113,6 +113,16 @@ final class SqliteTrainingRepository implements TrainingRepository {
       );
 
   @override
+  Future<int> undoLastStationCompletion({
+    required int sessionId,
+    required DateTime restoredAt,
+  }) =>
+      _dao.undoLastStationCompletion(
+        sessionId: sessionId,
+        restoredAt: restoredAt,
+      );
+
+  @override
   Future<void> completeSession(int sessionId, DateTime endedAt) =>
       _dao.completeSession(sessionId, endedAt);
 

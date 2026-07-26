@@ -45,6 +45,10 @@ abstract interface class TrainingRepository {
     required int nextStationId,
     required DateTime at,
   });
+  Future<int> undoLastStationCompletion({
+    required int sessionId,
+    required DateTime restoredAt,
+  });
   Future<void> completeSession(int sessionId, DateTime endedAt);
   Future<void> cancelSession(int sessionId, DateTime endedAt);
   Future<void> deleteSession(int sessionId);

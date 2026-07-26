@@ -112,6 +112,10 @@ class TrainingDetailPage extends ConsumerWidget {
                   onImportHeartRate: () =>
                       _showHeartRateImportOptions(context, ref, value.session),
                   onReplay: () => context.push('/training/$sessionId/replay'),
+                  onUndoFinalCompletion: returnHomeOnBack &&
+                          value.session.status == TrainingStatus.completed
+                      ? () => _undoFinalCompletion(context, ref, value)
+                      : null,
                   onEditActual: (station) => _editActual(context, ref, station),
                 ),
         ),
@@ -143,6 +147,54 @@ class TrainingDetailPage extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('保存失败：$error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _undoFinalCompletion(
+    BuildContext context,
+    WidgetRef ref,
+    TrainingReport report,
+  ) async {
+    if (report.stations.isEmpty) return;
+    final last = report.stations.last;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('继续最后一个项目？'),
+        content: Text(
+          '将撤销“${last.displayName}”的完成记录，并重新打开本次训练。'
+          '计时会从该项目原开始时间继续。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('保留报告'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('返回继续计时'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      final repository =
+          await ref.read(trainingRepositoryFutureProvider.future);
+      await repository.undoLastStationCompletion(
+        sessionId: sessionId,
+        restoredAt: ref.read(clockProvider).now(),
+      );
+      ref.invalidate(trainingSessionsProvider);
+      ref.invalidate(trainingReportProvider(sessionId));
+      ref.invalidate(heartRateAnalysisProvider(sessionId));
+      if (context.mounted) context.go('/training/$sessionId/live');
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('恢复计时失败：$error')),
         );
       }
     }
@@ -561,6 +613,7 @@ class _ReportBody extends StatelessWidget {
     required this.importing,
     required this.onImportHeartRate,
     required this.onReplay,
+    required this.onUndoFinalCompletion,
     required this.onEditActual,
   });
 
@@ -569,6 +622,7 @@ class _ReportBody extends StatelessWidget {
   final bool importing;
   final VoidCallback onImportHeartRate;
   final VoidCallback onReplay;
+  final VoidCallback? onUndoFinalCompletion;
   final ValueChanged<StationRecord> onEditActual;
 
   @override
@@ -590,6 +644,14 @@ class _ReportBody extends StatelessWidget {
                   Expanded(child: Text('这场训练已取消，以下为取消前保存的数据。')),
                 ],
               ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (onUndoFinalCompletion != null) ...[
+            OutlinedButton.icon(
+              onPressed: onUndoFinalCompletion,
+              icon: const Icon(Icons.undo_rounded),
+              label: const Text('误触完成？返回最后一项继续计时'),
             ),
             const SizedBox(height: 12),
           ],

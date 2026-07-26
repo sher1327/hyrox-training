@@ -41,6 +41,23 @@ final class TrainingTimerState {
         .firstOrNull;
   }
 
+  /// Only the station immediately before the current flow position can be
+  /// restored. This prevents an undo from crossing confirmed later records.
+  StationRecord? get undoCandidate {
+    final transition = transitionSource;
+    if (transition != null) return transition;
+    final active = current;
+    if (active == null || active.sequenceIndex == 0) return null;
+    return stations
+        .where(
+          (item) =>
+              item.sequenceIndex == active.sequenceIndex - 1 &&
+              (item.status == SegmentStatus.completed ||
+                  item.status == SegmentStatus.skipped),
+        )
+        .firstOrNull;
+  }
+
   bool get isTransitioning => transitionSource != null;
 
   bool get hasActiveTimer => current != null || isTransitioning;
@@ -170,6 +187,30 @@ final class TrainingTimerController
       );
     } catch (_) {
       state = AsyncData(value.copyWith(isSaving: false));
+      rethrow;
+    }
+  }
+
+  Future<void> undoLastCompletion() async {
+    final value = state.requireValue;
+    if (value.undoCandidate == null || value.isSaving) return;
+    state = AsyncData(value.copyWith(isSaving: true));
+    final now = _clock.now();
+    try {
+      await _repository.undoLastStationCompletion(
+        sessionId: value.session.id,
+        restoredAt: now,
+      );
+      final refreshed = await _repository.listStations(value.session.id);
+      state = AsyncData(
+        value.copyWith(
+          stations: refreshed,
+          now: now,
+          isSaving: false,
+        ),
+      );
+    } catch (_) {
+      state = AsyncData(value.copyWith(now: now, isSaving: false));
       rethrow;
     }
   }

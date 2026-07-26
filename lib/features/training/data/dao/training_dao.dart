@@ -234,6 +234,163 @@ final class TrainingDao {
         if (activated != 1) throw StateError('下一项目状态已发生变化');
       });
 
+  /// Restores only the immediately preceding completed/skipped station.
+  ///
+  /// It supports all three states produced by the timer flow:
+  /// 1. transition is running and the next station is pending;
+  /// 2. the next station was activated directly;
+  /// 3. the final station completed the whole session.
+  Future<int> undoLastStationCompletion({
+    required int sessionId,
+    required DateTime restoredAt,
+  }) =>
+      db.transaction((txn) async {
+        final sessions = await txn.query(
+          'training_session',
+          columns: ['id', 'status'],
+          where: 'id = ?',
+          whereArgs: [sessionId],
+          limit: 1,
+        );
+        if (sessions.isEmpty) throw StateError('训练记录不存在');
+        final sessionStatus = sessions.single['status']! as String;
+        if (sessionStatus != 'in_progress' && sessionStatus != 'completed') {
+          throw StateError('当前训练状态不允许撤销完成');
+        }
+
+        final stations = await txn.query(
+          'station_record',
+          where: 'session_id = ?',
+          whereArgs: [sessionId],
+          orderBy: 'sequence_index ASC',
+        );
+        if (stations.isEmpty) throw StateError('训练没有项目记录');
+
+        Map<String, Object?>? source;
+        Map<String, Object?>? activeNext;
+        final transitions = stations
+            .where(
+              (row) =>
+                  row['transition_started_at_ms'] != null &&
+                  row['transition_ended_at_ms'] == null,
+            )
+            .toList();
+        final active =
+            stations.where((row) => row['status'] == 'active').toList();
+        if (transitions.length > 1 || active.length > 1) {
+          throw StateError('训练项目状态异常，无法安全撤销');
+        }
+
+        if (transitions.isNotEmpty) {
+          source = transitions.single;
+        } else if (active.isNotEmpty) {
+          activeNext = active.single;
+          final previousIndex = (activeNext['sequence_index']! as int) - 1;
+          final previous = stations
+              .where((row) => row['sequence_index'] == previousIndex)
+              .toList();
+          source = previous.isEmpty ? null : previous.single;
+        } else if (sessionStatus == 'completed') {
+          source = stations.last;
+        }
+
+        if (source == null ||
+            (source['status'] != 'completed' &&
+                source['status'] != 'skipped')) {
+          throw StateError('没有可以撤销的上一项目');
+        }
+        if (source['started_at_ms'] == null) {
+          throw StateError('上一项目缺少开始时间，无法恢复计时');
+        }
+        final sourceIndex = source['sequence_index']! as int;
+        if (sessionStatus == 'completed' &&
+            sourceIndex != (stations.last['sequence_index']! as int)) {
+          throw StateError('只能撤销最后完成的项目');
+        }
+        if (activeNext != null &&
+            activeNext['sequence_index'] != sourceIndex + 1) {
+          throw StateError('只能撤销当前项目的上一项');
+        }
+        final laterChanged = stations.any(
+          (row) =>
+              (row['sequence_index']! as int) > sourceIndex &&
+              row['id'] != activeNext?['id'] &&
+              row['status'] != 'pending',
+        );
+        if (laterChanged) throw StateError('后续项目已有记录，无法撤销');
+
+        if (activeNext != null) {
+          final reset = await txn.update(
+            'station_record',
+            {
+              'status': 'pending',
+              'started_at_ms': null,
+              'ended_at_ms': null,
+              'duration_ms': null,
+              'accumulated_ms': 0,
+              'athlete': null,
+              'athlete_name': null,
+              'actual_distance_meters': null,
+              'actual_resistance_level': null,
+              'actual_weight_kg': null,
+              'actual_repetitions': null,
+              'transition_started_at_ms': null,
+              'transition_ended_at_ms': null,
+              'transition_duration_ms': null,
+            },
+            where: "id = ? AND status = 'active'",
+            whereArgs: [activeNext['id']],
+          );
+          if (reset != 1) throw StateError('当前项目状态已发生变化');
+        }
+
+        final restored = await txn.update(
+          'station_record',
+          {
+            'status': 'active',
+            'ended_at_ms': null,
+            'duration_ms': null,
+            'accumulated_ms': 0,
+            'athlete': null,
+            'athlete_name': null,
+            'actual_distance_meters': null,
+            'actual_resistance_level': null,
+            'actual_weight_kg': null,
+            'actual_repetitions': null,
+            'transition_started_at_ms': null,
+            'transition_ended_at_ms': null,
+            'transition_duration_ms': null,
+          },
+          where: "id = ? AND status IN ('completed', 'skipped')",
+          whereArgs: [source['id']],
+        );
+        if (restored != 1) throw StateError('上一项目状态已发生变化');
+
+        final restoredAtMs = restoredAt.millisecondsSinceEpoch;
+        if (sessionStatus == 'completed') {
+          final reopened = await txn.update(
+            'training_session',
+            {
+              'status': 'in_progress',
+              'ended_at_ms': null,
+              'total_duration_ms': null,
+              'updated_at_ms': restoredAtMs,
+            },
+            where: "id = ? AND status = 'completed'",
+            whereArgs: [sessionId],
+          );
+          if (reopened != 1) throw StateError('训练状态已发生变化');
+        } else {
+          await txn.update(
+            'training_session',
+            {'updated_at_ms': restoredAtMs},
+            where: "id = ? AND status = 'in_progress'",
+            whereArgs: [sessionId],
+          );
+        }
+        return source['id']! as int;
+      });
+
   Future<void> completeSession(int sessionId, DateTime endedAt) async {
     await db.rawUpdate(
       '''UPDATE training_session
