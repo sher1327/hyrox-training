@@ -15,6 +15,7 @@ lib/
 │       └── clock.dart           # Injectable time source for tests
 ├── features/
 │   ├── heart_rate/              # FIT/Intervals import + full sample storage
+│   ├── replay/                  # Immutable replay aggregate + Riverpod playback
 │   └── training/
 │       ├── data/
 │       │   ├── dao/             # Raw SQL and row mapping only
@@ -39,3 +40,10 @@ Dependencies point inward: `presentation -> domain <- data`. SQLite stays behind
 5. A session and all template station rows are created transactionally before timing starts.
 6. FIT/Intervals heart-rate samples are stored separately and linked to a session. Imports never mutate timing records.
 7. A running session can be restored from SQLite in a later increment; the schema already supports this.
+8. Training Replay is derived from stored sessions, segments and the active
+   heart-rate import batch. It does not duplicate persisted data.
+9. Replay zones use an injectable reference maximum. Until athlete profile
+   settings are added, the workout's observed maximum is used and disclosed in
+   the UI. Sensor gaps over 30 seconds are not connected or counted as Zone time.
+10. `TrainingReplay.toAnalysisPayload()` provides a compact, versioned and
+    downsampled boundary for future AI analysis without coupling AI code to UI.

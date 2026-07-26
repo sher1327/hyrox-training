@@ -7,6 +7,7 @@ import '../features/training/presentation/pages/training_detail_page.dart';
 import '../features/training/presentation/pages/training_timer_page.dart';
 import '../features/training/presentation/pages/training_templates_page.dart';
 import '../features/training/presentation/pages/template_editor_page.dart';
+import '../features/replay/presentation/pages/training_replay_page.dart';
 
 final appRouter = GoRouter(
   routes: [
@@ -18,6 +19,12 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/training/:id/live',
       builder: (_, state) => TrainingTimerPage(
+        sessionId: int.parse(state.pathParameters['id']!),
+      ),
+    ),
+    GoRoute(
+      path: '/training/:id/replay',
+      builder: (_, state) => TrainingReplayPage(
         sessionId: int.parse(state.pathParameters['id']!),
       ),
     ),

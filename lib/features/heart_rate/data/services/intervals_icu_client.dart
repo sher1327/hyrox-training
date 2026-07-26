@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../../domain/models/heart_rate_models.dart';
 import '../../domain/models/intervals_models.dart';
+import '../../domain/services/heart_rate_time_series_mapper.dart';
 
 final class IntervalsApiException implements Exception {
   const IntervalsApiException(this.message, {this.statusCode});
@@ -64,24 +65,12 @@ final class IntervalsIcuClient {
     if (times == null || heartRates == null) {
       throw const FormatException('该活动没有可用的时间或心率流');
     }
-    final count =
-        times.length < heartRates.length ? times.length : heartRates.length;
-    final samples = <HeartRateSample>[];
-    for (var index = 0; index < count; index++) {
-      final seconds = times[index];
-      final bpm = heartRates[index];
-      if (seconds is! num || bpm is! num || bpm <= 0) continue;
-      samples.add(
-        HeartRateSample(
-          timestamp: activity.startedAt.add(
-            Duration(milliseconds: (seconds * 1000).round()),
-          ),
-          bpm: bpm.round(),
-          source: HeartRateSources.intervalsIcu,
-        ),
-      );
-    }
-    return samples;
+    return HeartRateTimeSeriesMapper.fromRelativeStreams(
+      startedAt: activity.startedAt,
+      times: times,
+      heartRates: heartRates,
+      source: HeartRateSources.intervalsIcu,
+    );
   }
 
   Future<http.Response> _get(

@@ -111,6 +111,7 @@ class TrainingDetailPage extends ConsumerWidget {
                   importing: importing,
                   onImportHeartRate: () =>
                       _showHeartRateImportOptions(context, ref, value.session),
+                  onReplay: () => context.push('/training/$sessionId/replay'),
                   onEditActual: (station) => _editActual(context, ref, station),
                 ),
         ),
@@ -559,6 +560,7 @@ class _ReportBody extends StatelessWidget {
     required this.heartRate,
     required this.importing,
     required this.onImportHeartRate,
+    required this.onReplay,
     required this.onEditActual,
   });
 
@@ -566,6 +568,7 @@ class _ReportBody extends StatelessWidget {
   final AsyncValue<HeartRateAnalysis> heartRate;
   final bool importing;
   final VoidCallback onImportHeartRate;
+  final VoidCallback onReplay;
   final ValueChanged<StationRecord> onEditActual;
 
   @override
@@ -665,6 +668,18 @@ class _ReportBody extends StatelessWidget {
             icon: const Icon(Icons.monitor_heart_outlined),
             label: Text(
               report.session.avgHeartRate == null ? '导入心率' : '重新导入心率',
+            ),
+          ),
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            onPressed: (report.session.heartRateSampleCount ?? 0) > 0
+                ? onReplay
+                : null,
+            icon: const Icon(Icons.play_circle_outline_rounded),
+            label: Text(
+              (report.session.heartRateSampleCount ?? 0) > 0
+                  ? '训练回放'
+                  : '导入心率后可回放',
             ),
           ),
           const SizedBox(height: 24),
