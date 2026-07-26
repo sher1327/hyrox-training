@@ -4,6 +4,7 @@ import '../features/training/presentation/pages/create_training_page.dart';
 import '../features/training/presentation/pages/dashboard_page.dart';
 import '../features/training/presentation/pages/history_page.dart';
 import '../features/training/presentation/pages/training_detail_page.dart';
+import '../features/training/presentation/pages/training_segment_breakdown_page.dart';
 import '../features/training/presentation/pages/training_timer_page.dart';
 import '../features/training/presentation/pages/training_templates_page.dart';
 import '../features/training/presentation/pages/template_editor_page.dart';
@@ -26,6 +27,16 @@ final appRouter = GoRouter(
       path: '/training/:id/replay',
       builder: (_, state) => TrainingReplayPage(
         sessionId: int.parse(state.pathParameters['id']!),
+      ),
+    ),
+    GoRoute(
+      path: '/training/:id/breakdown/:kind',
+      builder: (_, state) => TrainingSegmentBreakdownPage(
+        sessionId: int.parse(state.pathParameters['id']!),
+        kind: state.pathParameters['kind'] ==
+                TrainingBreakdownKind.station.routeName
+            ? TrainingBreakdownKind.station
+            : TrainingBreakdownKind.running,
       ),
     ),
     GoRoute(

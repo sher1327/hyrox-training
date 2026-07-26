@@ -14,6 +14,7 @@ import '../../domain/models/training_report.dart';
 import '../controllers/training_providers.dart';
 import '../formatters/training_formatters.dart';
 import '../widgets/station_actual_editor.dart';
+import 'training_segment_breakdown_page.dart';
 
 class TrainingDetailPage extends ConsumerWidget {
   const TrainingDetailPage({
@@ -117,6 +118,14 @@ class TrainingDetailPage extends ConsumerWidget {
                       _showHeartRateImportOptions(context, ref, value.session),
                   onReplay: () => context.push('/training/$sessionId/replay'),
                   onExportReplay: () => _exportReplay(context, ref),
+                  onRunningBreakdown: () => context.push(
+                    '/training/$sessionId/breakdown/'
+                    '${TrainingBreakdownKind.running.routeName}',
+                  ),
+                  onStationBreakdown: () => context.push(
+                    '/training/$sessionId/breakdown/'
+                    '${TrainingBreakdownKind.station.routeName}',
+                  ),
                   onUndoFinalCompletion: returnHomeOnBack &&
                           value.session.status == TrainingStatus.completed
                       ? () => _undoFinalCompletion(context, ref, value)
@@ -654,6 +663,8 @@ class _ReportBody extends StatelessWidget {
     required this.onImportHeartRate,
     required this.onReplay,
     required this.onExportReplay,
+    required this.onRunningBreakdown,
+    required this.onStationBreakdown,
     required this.onUndoFinalCompletion,
     required this.onEditActual,
   });
@@ -665,6 +676,8 @@ class _ReportBody extends StatelessWidget {
   final VoidCallback onImportHeartRate;
   final VoidCallback onReplay;
   final VoidCallback onExportReplay;
+  final VoidCallback onRunningBreakdown;
+  final VoidCallback onStationBreakdown;
   final VoidCallback? onUndoFinalCompletion;
   final ValueChanged<StationRecord> onEditActual;
 
@@ -727,10 +740,12 @@ class _ReportBody extends StatelessWidget {
                       _Metric(
                         label: '跑步时间',
                         value: formatDuration(report.runningDuration),
+                        onTap: onRunningBreakdown,
                       ),
                       _Metric(
-                        label: '项目时间',
+                        label: '站点时间',
                         value: formatDuration(report.stationDuration),
+                        onTap: onStationBreakdown,
                       ),
                       _Metric(
                         label: '转换时间',
@@ -838,25 +853,52 @@ String _friendlyExportError(Object error) {
 }
 
 class _Metric extends StatelessWidget {
-  const _Metric({required this.label, required this.value});
+  const _Metric({required this.label, required this.value, this.onTap});
 
   final String label;
   final String value;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) => Expanded(
-        child: Column(
-          children: [
-            Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: Colors.white54),
+        child: Semantics(
+          button: onTap != null,
+          label: onTap == null ? null : '$label，查看每段明细',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(
+                children: [
+                  Text(
+                    value,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        label,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: onTap == null
+                                  ? Colors.white54
+                                  : Theme.of(context).colorScheme.primary,
+                            ),
+                      ),
+                      if (onTap != null)
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          size: 15,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ],
+          ),
         ),
       );
 }
