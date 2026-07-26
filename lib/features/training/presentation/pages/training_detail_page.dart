@@ -7,6 +7,8 @@ import '../../../heart_rate/data/services/intervals_icu_client.dart';
 import '../../../heart_rate/domain/models/heart_rate_models.dart';
 import '../../../heart_rate/domain/models/intervals_models.dart';
 import '../../../heart_rate/presentation/controllers/heart_rate_providers.dart';
+import '../../../replay/presentation/controllers/training_replay_providers.dart';
+import '../../../replay/presentation/services/training_replay_image_exporter.dart';
 import '../../domain/models/training_models.dart';
 import '../../domain/models/training_report.dart';
 import '../controllers/training_providers.dart';
@@ -28,6 +30,7 @@ class TrainingDetailPage extends ConsumerWidget {
     final report = ref.watch(trainingReportProvider(sessionId));
     final heartRate = ref.watch(heartRateAnalysisProvider(sessionId));
     final importing = ref.watch(heartRateImportingProvider(sessionId));
+    final exporting = ref.watch(trainingReplayExportingProvider(sessionId));
     return PopScope(
       canPop: !returnHomeOnBack,
       onPopInvokedWithResult: (didPop, _) {
@@ -109,9 +112,11 @@ class TrainingDetailPage extends ConsumerWidget {
                   report: value,
                   heartRate: heartRate,
                   importing: importing,
+                  exporting: exporting,
                   onImportHeartRate: () =>
                       _showHeartRateImportOptions(context, ref, value.session),
                   onReplay: () => context.push('/training/$sessionId/replay'),
+                  onExportReplay: () => _exportReplay(context, ref),
                   onUndoFinalCompletion: returnHomeOnBack &&
                           value.session.status == TrainingStatus.completed
                       ? () => _undoFinalCompletion(context, ref, value)
@@ -121,6 +126,39 @@ class TrainingDetailPage extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _exportReplay(BuildContext context, WidgetRef ref) async {
+    ref.read(trainingReplayExportingProvider(sessionId).notifier).state = true;
+    try {
+      final replay = await ref.read(trainingReplayProvider(sessionId).future);
+      if (replay == null) {
+        throw StateError('训练记录不存在');
+      }
+      if (replay.duration <= Duration.zero) {
+        throw StateError('训练时长无效，暂时无法导出');
+      }
+      if (!context.mounted) return;
+      final result = await ref
+          .read(trainingReplayImageExporterProvider)
+          .exportToGallery(context, replay);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('完整回放已保存到相册：${result.fileName}.png'),
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('导出失败：${_friendlyExportError(error)}')),
+      );
+    } finally {
+      if (context.mounted) {
+        ref.read(trainingReplayExportingProvider(sessionId).notifier).state =
+            false;
+      }
+    }
   }
 
   Future<void> _editActual(
@@ -511,6 +549,7 @@ class TrainingDetailPage extends ConsumerWidget {
       final result = await action();
       ref.invalidate(trainingReportProvider(sessionId));
       ref.invalidate(heartRateAnalysisProvider(sessionId));
+      ref.invalidate(trainingReplayProvider(sessionId));
       ref.invalidate(trainingSessionsProvider);
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -611,8 +650,10 @@ class _ReportBody extends StatelessWidget {
     required this.report,
     required this.heartRate,
     required this.importing,
+    required this.exporting,
     required this.onImportHeartRate,
     required this.onReplay,
+    required this.onExportReplay,
     required this.onUndoFinalCompletion,
     required this.onEditActual,
   });
@@ -620,8 +661,10 @@ class _ReportBody extends StatelessWidget {
   final TrainingReport report;
   final AsyncValue<HeartRateAnalysis> heartRate;
   final bool importing;
+  final bool exporting;
   final VoidCallback onImportHeartRate;
   final VoidCallback onReplay;
+  final VoidCallback onExportReplay;
   final VoidCallback? onUndoFinalCompletion;
   final ValueChanged<StationRecord> onEditActual;
 
@@ -744,6 +787,17 @@ class _ReportBody extends StatelessWidget {
                   : '导入心率后可回放',
             ),
           ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: exporting ? null : onExportReplay,
+            icon: exporting
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.download_rounded),
+            label: Text(exporting ? '正在生成长图…' : '导出完整回放'),
+          ),
           const SizedBox(height: 24),
           Text('项目明细', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 10),
@@ -770,6 +824,17 @@ class _ReportBody extends StatelessWidget {
           ],
         ],
       );
+}
+
+String _friendlyExportError(Object error) {
+  final message = error.toString();
+  if (message.toLowerCase().contains('access') ||
+      message.toLowerCase().contains('permission')) {
+    return '没有相册权限，请在系统设置中允许保存照片';
+  }
+  return message
+      .replaceFirst('Bad state: ', '')
+      .replaceFirst('Exception: ', '');
 }
 
 class _Metric extends StatelessWidget {

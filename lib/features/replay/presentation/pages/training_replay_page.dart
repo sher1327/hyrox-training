@@ -6,6 +6,7 @@ import '../../../training/domain/models/training_models.dart';
 import '../../../training/presentation/formatters/training_formatters.dart';
 import '../../domain/models/training_replay.dart';
 import '../controllers/training_replay_providers.dart';
+import '../services/training_replay_image_exporter.dart';
 
 class TrainingReplayPage extends ConsumerWidget {
   const TrainingReplayPage({required this.sessionId, super.key});
@@ -15,8 +16,33 @@ class TrainingReplayPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final replay = ref.watch(trainingReplayProvider(sessionId));
+    final exporting = ref.watch(trainingReplayExportingProvider(sessionId));
+    final exportableReplay = replay.valueOrNull;
     return Scaffold(
-      appBar: AppBar(title: const Text('训练回放')),
+      appBar: AppBar(
+        title: const Text('训练回放'),
+        actions: [
+          if (exporting)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Center(
+                child: SizedBox.square(
+                  dimension: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          else
+            IconButton(
+              tooltip: '导出完整回放',
+              onPressed: exportableReplay == null ||
+                      exportableReplay.duration <= Duration.zero
+                  ? null
+                  : () => _exportReplay(context, ref, exportableReplay),
+              icon: const Icon(Icons.download_rounded),
+            ),
+        ],
+      ),
       body: replay.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => _MessageState(
@@ -52,6 +78,40 @@ class TrainingReplayPage extends ConsumerWidget {
         },
       ),
     );
+  }
+
+  Future<void> _exportReplay(
+    BuildContext context,
+    WidgetRef ref,
+    TrainingReplay replay,
+  ) async {
+    final playbackKey = ReplayPlaybackKey(
+      sessionId: replay.sessionId,
+      duration: replay.duration,
+    );
+    ref.read(replayPlaybackProvider(playbackKey).notifier).pause();
+    ref.read(trainingReplayExportingProvider(sessionId).notifier).state = true;
+    try {
+      final result = await ref
+          .read(trainingReplayImageExporterProvider)
+          .exportToGallery(context, replay);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('完整回放已保存到相册：${result.fileName}.png'),
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('导出失败：${_friendlyExportError(error)}')),
+      );
+    } finally {
+      if (context.mounted) {
+        ref.read(trainingReplayExportingProvider(sessionId).notifier).state =
+            false;
+      }
+    }
   }
 }
 
@@ -929,4 +989,15 @@ List<FlSpot> _chartSpots(List<ReplayHeartRatePoint> points) {
     );
   }
   return spots;
+}
+
+String _friendlyExportError(Object error) {
+  final message = error.toString();
+  if (message.toLowerCase().contains('access') ||
+      message.toLowerCase().contains('permission')) {
+    return '没有相册权限，请在系统设置中允许保存照片';
+  }
+  return message
+      .replaceFirst('Exception: ', '')
+      .replaceFirst('Bad state: ', '');
 }

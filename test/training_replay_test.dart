@@ -6,6 +6,7 @@ import 'package:hyrox_training_tracker/features/heart_rate/domain/services/heart
 import 'package:hyrox_training_tracker/features/replay/domain/models/training_replay.dart';
 import 'package:hyrox_training_tracker/features/replay/presentation/controllers/training_replay_providers.dart';
 import 'package:hyrox_training_tracker/features/replay/presentation/pages/training_replay_page.dart';
+import 'package:hyrox_training_tracker/features/replay/presentation/widgets/training_replay_export_view.dart';
 import 'package:hyrox_training_tracker/features/training/domain/models/training_models.dart';
 
 void main() {
@@ -47,6 +48,11 @@ void main() {
           status: SegmentStatus.completed,
           startedAt: start,
           endedAt: start.add(const Duration(seconds: 20)),
+          athlete: AthleteAssignment.self,
+          targetDistanceMeters: 1000,
+          actualDistanceMeters: 950,
+          transitionStartedAt: start.add(const Duration(seconds: 20)),
+          transitionEndedAt: start.add(const Duration(seconds: 25)),
         ),
       ],
       samples: [
@@ -79,12 +85,21 @@ void main() {
       everyElement(closeTo(.2, .0001)),
     );
     expect(replay.segments.single.averageHeartRate, 115);
+    expect(
+        replay.segments.single.transitionDuration, const Duration(seconds: 5));
+    expect(replay.segments.single.actualSpecification, '实际：950 m');
+    expect(replay.segments.single.athleteName, '我');
 
     final payload = replay.toAnalysisPayload(maxSamples: 2);
     expect(payload['schema_version'], 1);
     expect(
       ((payload['heart_rate'] as Map<String, Object?>)['samples'] as List),
       hasLength(2),
+    );
+    expect(
+      ((payload['segments'] as List).single
+          as Map<String, Object?>)['transition_seconds'],
+      5,
     );
   });
 
@@ -159,12 +174,44 @@ void main() {
     expect(find.text('心率曲线'), findsOneWidget);
     expect(find.text('心率 Zone'), findsOneWidget);
     expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
+    expect(find.byTooltip('导出完整回放'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.play_arrow_rounded));
     await tester.pump(const Duration(milliseconds: 150));
     expect(find.byIcon(Icons.pause_rounded), findsOneWidget);
     await tester.tap(find.byIcon(Icons.pause_rounded));
     await tester.pump();
+  });
+
+  testWidgets('complete replay export is a long image without controls',
+      (tester) async {
+    final replay = _replayFixture();
+    await tester.binding.setSurfaceSize(const Size(430, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        themeMode: ThemeMode.dark,
+        darkTheme: ThemeData.dark(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: TrainingReplayExportView(replay: replay),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('完整训练时间轴'), findsOneWidget);
+    expect(find.textContaining('RUN'), findsWidgets);
+    expect(find.textContaining('SKI ERG'), findsWidgets);
+    expect(find.byIcon(Icons.play_arrow_rounded), findsNothing);
+    expect(find.byIcon(Icons.pause_rounded), findsNothing);
+    expect(find.textContaining('0.5×'), findsNothing);
+
+    expect(
+      tester.getSize(find.byType(TrainingReplayExportView)).height,
+      greaterThan(900),
+    );
   });
 }
 

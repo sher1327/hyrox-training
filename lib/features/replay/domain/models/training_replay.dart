@@ -66,6 +66,9 @@ final class ReplaySegment {
     required this.end,
     required this.averageHeartRate,
     required this.maximumHeartRate,
+    this.transitionDuration,
+    this.actualSpecification,
+    this.athleteName,
   });
 
   final int stationId;
@@ -76,6 +79,9 @@ final class ReplaySegment {
   final Duration end;
   final int? averageHeartRate;
   final int? maximumHeartRate;
+  final Duration? transitionDuration;
+  final String? actualSpecification;
+  final String? athleteName;
 
   Duration get duration => end - start;
 
@@ -167,6 +173,20 @@ final class TrainingReplay {
           end: end,
           averageHeartRate: stationSummary?.average,
           maximumHeartRate: stationSummary?.maximum,
+          transitionDuration: station.transitionDuration ??
+              (station.transitionStartedAt != null &&
+                      station.transitionEndedAt != null
+                  ? station.transitionEndedAt!
+                      .difference(station.transitionStartedAt!)
+                  : null),
+          actualSpecification: station.actualSpecification,
+          athleteName: station.athleteName ??
+              switch (station.athlete) {
+                AthleteAssignment.self => '我',
+                AthleteAssignment.partner => session.partnerName ?? '队友',
+                AthleteAssignment.both => '共同完成',
+                null => null,
+              },
         ),
       );
     }
@@ -293,6 +313,12 @@ final class TrainingReplay {
             'end_seconds': segment.end.inMilliseconds / 1000,
             'average_bpm': segment.averageHeartRate,
             'maximum_bpm': segment.maximumHeartRate,
+            'transition_seconds':
+                segment.transitionDuration?.inMilliseconds == null
+                    ? null
+                    : segment.transitionDuration!.inMilliseconds / 1000,
+            'actual_specification': segment.actualSpecification,
+            'athlete_name': segment.athleteName,
           },
       ],
     };
