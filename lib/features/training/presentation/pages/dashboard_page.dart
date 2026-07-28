@@ -20,6 +20,11 @@ class DashboardPage extends ConsumerWidget {
         ),
         actions: [
           IconButton(
+            tooltip: '数据备份与恢复',
+            onPressed: () => context.push('/data-management'),
+            icon: const Icon(Icons.storage_rounded),
+          ),
+          IconButton(
             tooltip: '训练模板',
             onPressed: () => context.push('/templates'),
             icon: const Icon(Icons.schema_outlined),

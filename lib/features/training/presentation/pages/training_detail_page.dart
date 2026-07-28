@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../heart_rate/data/services/intervals_icu_client.dart';
+import '../../../backup/presentation/controllers/database_backup_providers.dart';
 import '../../../heart_rate/domain/models/heart_rate_models.dart';
 import '../../../heart_rate/domain/models/intervals_models.dart';
 import '../../../heart_rate/presentation/controllers/heart_rate_providers.dart';
@@ -596,7 +597,7 @@ class TrainingDetailPage extends ConsumerWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除这条训练？'),
-        content: const Text('训练和所有项目数据都会从本机永久删除，此操作无法撤销。'),
+        content: const Text('删除前会自动创建一份本机安全快照，然后删除训练及其全部分段和心率数据。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -614,6 +615,10 @@ class TrainingDetailPage extends ConsumerWidget {
     );
     if (confirmed != true || !context.mounted) return;
     try {
+      await ref
+          .read(databaseBackupServiceProvider)
+          .createInternalSnapshot(reason: 'before_delete');
+      ref.invalidate(internalBackupSummariesProvider);
       final repository =
           await ref.read(trainingRepositoryFutureProvider.future);
       await repository.deleteSession(sessionId);

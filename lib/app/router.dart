@@ -9,10 +9,15 @@ import '../features/training/presentation/pages/training_timer_page.dart';
 import '../features/training/presentation/pages/training_templates_page.dart';
 import '../features/training/presentation/pages/template_editor_page.dart';
 import '../features/replay/presentation/pages/training_replay_page.dart';
+import '../features/backup/presentation/pages/data_management_page.dart';
 
 final appRouter = GoRouter(
   routes: [
     GoRoute(path: '/', builder: (_, __) => const DashboardPage()),
+    GoRoute(
+      path: '/data-management',
+      builder: (_, __) => const DataManagementPage(),
+    ),
     GoRoute(
       path: '/training/new',
       builder: (_, __) => const CreateTrainingPage(),

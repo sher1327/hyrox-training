@@ -11,10 +11,36 @@ final class AppDatabase {
 
   Future<Database> get database async => _database ??= await _open();
 
-  Future<Database> _open() async {
+  Future<String> get databasePath async {
     final root = await getDatabasesPath();
+    return p.join(root, 'hyrox.db');
+  }
+
+  /// Flushes any pending WAL pages so a file copy represents one consistent
+  /// point in time. Backup operations are only exposed away from the live
+  /// timer, so no application write can race the subsequent copy.
+  Future<void> prepareForSnapshot() async {
+    final db = await database;
+    try {
+      await db.rawQuery('PRAGMA wal_checkpoint(FULL)');
+    } on DatabaseException {
+      // Databases using the DELETE journal mode do not have WAL pages.
+    }
+  }
+
+  Future<void> close() async {
+    final current = _database;
+    _database = null;
+    await current?.close();
+  }
+
+  Future<void> reopen() async {
+    await database;
+  }
+
+  Future<Database> _open() async {
     return openDatabase(
-      p.join(root, 'hyrox.db'),
+      await databasePath,
       version: DatabaseSchema.version,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, version) async {
