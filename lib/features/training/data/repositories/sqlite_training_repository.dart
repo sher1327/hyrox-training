@@ -113,6 +113,72 @@ final class SqliteTrainingRepository implements TrainingRepository {
       );
 
   @override
+  Future<void> finishTransitionAndCompleteSession({
+    required int sessionId,
+    required int fromStationId,
+    required DateTime at,
+  }) =>
+      _dao.finishTransitionAndCompleteSession(
+        sessionId: sessionId,
+        fromStationId: fromStationId,
+        at: at,
+      );
+
+  @override
+  Future<void> reorderPendingStations({
+    required int sessionId,
+    required List<int> orderedStationIds,
+    required DateTime changedAt,
+  }) =>
+      _dao.reorderPendingStations(
+        sessionId: sessionId,
+        orderedStationIds: orderedStationIds,
+        changedAt: changedAt,
+      );
+
+  @override
+  Future<int> addPendingStation({
+    required int sessionId,
+    required TemplateSegmentInput segment,
+    required bool insertAsNext,
+    required DateTime changedAt,
+  }) =>
+      _dao.addPendingStation(
+        sessionId: sessionId,
+        segment: segment,
+        insertAsNext: insertAsNext,
+        changedAt: changedAt,
+      );
+
+  @override
+  Future<void> skipPendingStation({
+    required int sessionId,
+    required int stationId,
+    required String reason,
+    required DateTime changedAt,
+  }) =>
+      _dao.skipPendingStation(
+        sessionId: sessionId,
+        stationId: stationId,
+        reason: reason,
+        changedAt: changedAt,
+      );
+
+  @override
+  Future<void> restoreSkippedPendingStation({
+    required int sessionId,
+    required int stationId,
+    required int pendingIndex,
+    required DateTime changedAt,
+  }) =>
+      _dao.restoreSkippedPendingStation(
+        sessionId: sessionId,
+        stationId: stationId,
+        pendingIndex: pendingIndex,
+        changedAt: changedAt,
+      );
+
+  @override
   Future<int> undoLastStationCompletion({
     required int sessionId,
     required DateTime restoredAt,
@@ -163,7 +229,13 @@ StationRecord _stationFromRow(Map<String, Object?> row) => StationRecord(
       sessionId: row['session_id']! as int,
       type: _stationType(row['station_type']! as String),
       runNumber: row['run_number'] as int?,
+      plannedSequenceIndex: row['planned_sequence_index'] as int?,
       sequenceIndex: row['sequence_index']! as int,
+      origin: switch (row['origin'] as String? ?? 'template') {
+        'template' => StationRecordOrigin.template,
+        'ad_hoc' => StationRecordOrigin.adHoc,
+        final value => throw FormatException('Unknown station origin: $value'),
+      },
       status: _segmentStatus(row['status']! as String),
       segmentKind: TrainingSegmentKind.values.byName(
         row['segment_kind']! as String,
@@ -190,6 +262,7 @@ StationRecord _stationFromRow(Map<String, Object?> row) => StationRecord(
       transitionDuration: row['transition_duration_ms'] == null
           ? null
           : Duration(milliseconds: row['transition_duration_ms']! as int),
+      skipReason: row['skip_reason'] as String?,
     );
 
 DateTime? _date(Object? value) => value == null

@@ -365,6 +365,34 @@ JOIN heart_rate_import import_batch
             'ON heart_rate_import(session_id) WHERE is_active = 1',
           );
         }
+        if (oldVersion < 9) {
+          if (!await _hasColumn(
+            db,
+            'station_record',
+            'planned_sequence_index',
+          )) {
+            await db.execute(
+              'ALTER TABLE station_record '
+              'ADD COLUMN planned_sequence_index INTEGER',
+            );
+          }
+          if (!await _hasColumn(db, 'station_record', 'origin')) {
+            await db.execute(
+              'ALTER TABLE station_record ADD COLUMN origin TEXT '
+              "NOT NULL DEFAULT 'template'",
+            );
+          }
+          if (!await _hasColumn(db, 'station_record', 'skip_reason')) {
+            await db.execute(
+              'ALTER TABLE station_record ADD COLUMN skip_reason TEXT',
+            );
+          }
+          await db.execute('''
+UPDATE station_record
+SET planned_sequence_index = sequence_index
+WHERE planned_sequence_index IS NULL AND origin = 'template'
+''');
+        }
       },
     );
   }

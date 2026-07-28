@@ -49,7 +49,9 @@ final class TrainingDao {
           'station_type': _stationTypeToDb(segment.type),
           'segment_kind': segment.segmentKind.name,
           'run_number': segment.type == StationType.run ? runNumber : null,
+          'planned_sequence_index': index,
           'sequence_index': index,
+          'origin': 'template',
           'status': index == 0 ? 'active' : 'pending',
           'started_at_ms': index == 0 ? now : null,
           'accumulated_ms': 0,
@@ -234,6 +236,188 @@ final class TrainingDao {
         if (activated != 1) throw StateError('下一项目状态已发生变化');
       });
 
+  Future<void> finishTransitionAndCompleteSession({
+    required int sessionId,
+    required int fromStationId,
+    required DateTime at,
+  }) =>
+      db.transaction((txn) async {
+        await _requireInProgressSession(txn, sessionId);
+        final atMs = at.millisecondsSinceEpoch;
+        final transitioned = await txn.rawUpdate(
+          '''UPDATE station_record
+             SET transition_ended_at_ms = ?,
+                 transition_duration_ms = MAX(0, ? - transition_started_at_ms)
+             WHERE id = ? AND session_id = ?
+               AND transition_started_at_ms IS NOT NULL
+               AND transition_ended_at_ms IS NULL''',
+          [atMs, atMs, fromStationId, sessionId],
+        );
+        if (transitioned != 1) throw StateError('转换计时状态已发生变化');
+        final pending = await txn.query(
+          'station_record',
+          columns: ['id'],
+          where: "session_id = ? AND status = 'pending'",
+          whereArgs: [sessionId],
+          limit: 1,
+        );
+        if (pending.isNotEmpty) throw StateError('仍有待进行项目，不能结束训练');
+        final completed = await txn.rawUpdate(
+          '''UPDATE training_session
+             SET status = 'completed', ended_at_ms = ?,
+                 total_duration_ms = MAX(0, ? - started_at_ms),
+                 updated_at_ms = ?
+             WHERE id = ? AND status = 'in_progress' ''',
+          [atMs, atMs, atMs, sessionId],
+        );
+        if (completed != 1) throw StateError('训练状态已发生变化');
+      });
+
+  Future<void> reorderPendingStations({
+    required int sessionId,
+    required List<int> orderedStationIds,
+    required DateTime changedAt,
+  }) =>
+      db.transaction((txn) async {
+        await _requireInProgressSession(txn, sessionId);
+        final rows = await _stationRows(txn, sessionId);
+        final pendingIds = rows
+            .where((row) => row['status'] == 'pending')
+            .map((row) => row['id']! as int)
+            .toList();
+        if (pendingIds.length != orderedStationIds.length ||
+            pendingIds
+                .toSet()
+                .difference(orderedStationIds.toSet())
+                .isNotEmpty ||
+            orderedStationIds.toSet().length != orderedStationIds.length) {
+          throw StateError('待进行项目已发生变化，请重试');
+        }
+        await _normalizeStationOrder(
+          txn,
+          rows: rows,
+          orderedPendingIds: orderedStationIds,
+        );
+        await _touchSession(txn, sessionId, changedAt);
+      });
+
+  Future<int> addPendingStation({
+    required int sessionId,
+    required TemplateSegmentInput segment,
+    required bool insertAsNext,
+    required DateTime changedAt,
+  }) =>
+      db.transaction((txn) async {
+        await _requireInProgressSession(txn, sessionId);
+        final rows = await _stationRows(txn, sessionId);
+        final maxRunNumber = rows
+            .where((row) => row['station_type'] == 'run')
+            .map((row) => row['run_number'] as int? ?? 0)
+            .fold<int>(
+                0, (largest, value) => value > largest ? value : largest);
+        final stationId = await txn.insert('station_record', {
+          'session_id': sessionId,
+          'segment_kind': segment.segmentKind.name,
+          'station_type': _stationTypeToDb(segment.type),
+          'run_number':
+              segment.type == StationType.run ? maxRunNumber + 1 : null,
+          'planned_sequence_index': null,
+          'sequence_index': 1000000 + rows.length,
+          'origin': 'ad_hoc',
+          'status': 'pending',
+          'accumulated_ms': 0,
+          'target_distance_meters': segment.targetDistanceMeters,
+          'target_resistance_level': segment.targetResistanceLevel,
+          'target_weight_kg': segment.targetWeightKg,
+          'target_repetitions': segment.targetRepetitions,
+        });
+        final refreshed = await _stationRows(txn, sessionId);
+        final pendingIds = refreshed
+            .where((row) => row['status'] == 'pending')
+            .map((row) => row['id']! as int)
+            .where((id) => id != stationId)
+            .toList();
+        if (insertAsNext) {
+          pendingIds.insert(0, stationId);
+        } else {
+          pendingIds.add(stationId);
+        }
+        await _normalizeStationOrder(
+          txn,
+          rows: refreshed,
+          orderedPendingIds: pendingIds,
+        );
+        await _touchSession(txn, sessionId, changedAt);
+        return stationId;
+      });
+
+  Future<void> skipPendingStation({
+    required int sessionId,
+    required int stationId,
+    required String reason,
+    required DateTime changedAt,
+  }) =>
+      db.transaction((txn) async {
+        await _requireInProgressSession(txn, sessionId);
+        final skipped = await txn.update(
+          'station_record',
+          {
+            'status': 'skipped',
+            'ended_at_ms': changedAt.millisecondsSinceEpoch,
+            'skip_reason': reason.trim().isEmpty ? '训练中调整' : reason.trim(),
+          },
+          where: "id = ? AND session_id = ? AND status = 'pending'",
+          whereArgs: [stationId, sessionId],
+        );
+        if (skipped != 1) throw StateError('该项目已发生变化，无法跳过');
+        final rows = await _stationRows(txn, sessionId);
+        await _normalizeStationOrder(
+          txn,
+          rows: rows,
+          orderedPendingIds: rows
+              .where((row) => row['status'] == 'pending')
+              .map((row) => row['id']! as int)
+              .toList(),
+        );
+        await _touchSession(txn, sessionId, changedAt);
+      });
+
+  Future<void> restoreSkippedPendingStation({
+    required int sessionId,
+    required int stationId,
+    required int pendingIndex,
+    required DateTime changedAt,
+  }) =>
+      db.transaction((txn) async {
+        await _requireInProgressSession(txn, sessionId);
+        final restored = await txn.update(
+          'station_record',
+          {
+            'status': 'pending',
+            'ended_at_ms': null,
+            'skip_reason': null,
+          },
+          where: "id = ? AND session_id = ? AND status = 'skipped' "
+              'AND started_at_ms IS NULL',
+          whereArgs: [stationId, sessionId],
+        );
+        if (restored != 1) throw StateError('该项目无法恢复到待训练队列');
+        final rows = await _stationRows(txn, sessionId);
+        final pendingIds = rows
+            .where((row) => row['status'] == 'pending')
+            .map((row) => row['id']! as int)
+            .where((id) => id != stationId)
+            .toList();
+        final restoredIndex = pendingIndex.clamp(0, pendingIds.length);
+        pendingIds.insert(restoredIndex, stationId);
+        await _normalizeStationOrder(
+          txn,
+          rows: rows,
+          orderedPendingIds: pendingIds,
+        );
+        await _touchSession(txn, sessionId, changedAt);
+      });
+
   /// Restores only the immediately preceding completed/skipped station.
   ///
   /// It supports all three states produced by the timer flow:
@@ -291,7 +475,17 @@ final class TrainingDao {
               .toList();
           source = previous.isEmpty ? null : previous.single;
         } else if (sessionStatus == 'completed') {
-          source = stations.last;
+          final completedDuringTraining = stations
+              .where(
+                (row) =>
+                    row['started_at_ms'] != null &&
+                    (row['status'] == 'completed' ||
+                        row['status'] == 'skipped'),
+              )
+              .toList();
+          source = completedDuringTraining.isEmpty
+              ? null
+              : completedDuringTraining.last;
         }
 
         if (source == null ||
@@ -303,10 +497,6 @@ final class TrainingDao {
           throw StateError('上一项目缺少开始时间，无法恢复计时');
         }
         final sourceIndex = source['sequence_index']! as int;
-        if (sessionStatus == 'completed' &&
-            sourceIndex != (stations.last['sequence_index']! as int)) {
-          throw StateError('只能撤销最后完成的项目');
-        }
         if (activeNext != null &&
             activeNext['sequence_index'] != sourceIndex + 1) {
           throw StateError('只能撤销当前项目的上一项');
@@ -315,7 +505,8 @@ final class TrainingDao {
           (row) =>
               (row['sequence_index']! as int) > sourceIndex &&
               row['id'] != activeNext?['id'] &&
-              row['status'] != 'pending',
+              row['status'] != 'pending' &&
+              row['started_at_ms'] != null,
         );
         if (laterChanged) throw StateError('后续项目已有记录，无法撤销');
 
@@ -447,6 +638,87 @@ final class TrainingDao {
       throw StateError('进行中的训练需要先取消，不能直接删除');
     }
   }
+
+  Future<void> _requireInProgressSession(
+    DatabaseExecutor executor,
+    int sessionId,
+  ) async {
+    final sessions = await executor.query(
+      'training_session',
+      columns: ['id'],
+      where: "id = ? AND status = 'in_progress'",
+      whereArgs: [sessionId],
+      limit: 1,
+    );
+    if (sessions.isEmpty) throw StateError('训练已结束，不能调整队列');
+  }
+
+  Future<List<Map<String, Object?>>> _stationRows(
+    DatabaseExecutor executor,
+    int sessionId,
+  ) =>
+      executor.query(
+        'station_record',
+        where: 'session_id = ?',
+        whereArgs: [sessionId],
+        orderBy: 'sequence_index ASC',
+      );
+
+  Future<void> _normalizeStationOrder(
+    DatabaseExecutor executor, {
+    required List<Map<String, Object?>> rows,
+    required List<int> orderedPendingIds,
+  }) async {
+    final locked = rows
+        .where(
+          (row) =>
+              row['status'] != 'pending' &&
+              !(row['status'] == 'skipped' && row['started_at_ms'] == null),
+        )
+        .map((row) => row['id']! as int);
+    final removed = rows
+        .where(
+          (row) => row['status'] == 'skipped' && row['started_at_ms'] == null,
+        )
+        .map((row) => row['id']! as int);
+    final orderedIds = <int>[
+      ...locked,
+      ...orderedPendingIds,
+      ...removed,
+    ];
+    if (orderedIds.length != rows.length ||
+        orderedIds.toSet().length != rows.length) {
+      throw StateError('训练队列数据不一致，请重试');
+    }
+    for (var index = 0; index < orderedIds.length; index++) {
+      await executor.update(
+        'station_record',
+        {'sequence_index': 1000000 + index},
+        where: 'id = ?',
+        whereArgs: [orderedIds[index]],
+      );
+    }
+    for (var index = 0; index < orderedIds.length; index++) {
+      await executor.update(
+        'station_record',
+        {'sequence_index': index},
+        where: 'id = ?',
+        whereArgs: [orderedIds[index]],
+      );
+    }
+  }
+
+  Future<void> _touchSession(
+    DatabaseExecutor executor,
+    int sessionId,
+    DateTime changedAt,
+  ) =>
+      executor.update(
+        'training_session',
+        {'updated_at_ms': changedAt.millisecondsSinceEpoch},
+        where: "id = ? AND status = 'in_progress'",
+        whereArgs: [sessionId],
+      );
 }
 
 String _stationTypeToDb(StationType type) => switch (type) {

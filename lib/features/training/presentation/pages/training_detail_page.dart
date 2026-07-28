@@ -968,6 +968,20 @@ class _StationRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(station.displayName),
+                  if (station.isAdHoc)
+                    Text(
+                      '训练中临时添加',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                    ),
+                  if (station.wasRemovedBeforeStart)
+                    Text(
+                      station.skipReason ?? '训练中调整',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.orangeAccent.shade100,
+                          ),
+                    ),
                   if (station.actualSpecification != null)
                     Text(
                       station.actualSpecification!,

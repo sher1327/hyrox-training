@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/time/clock.dart';
 import '../../domain/models/training_models.dart';
+import '../../domain/models/training_template.dart';
 import '../../domain/repositories/training_repository.dart';
 import 'training_providers.dart';
 
@@ -33,12 +34,30 @@ final class TrainingTimerState {
   StationRecord? get transitionSource =>
       stations.where((item) => item.isTransitionActive).firstOrNull;
 
+  List<StationRecord> get pendingStations => stations
+      .where((item) => item.status == SegmentStatus.pending)
+      .toList(growable: false);
+
+  List<StationRecord> get removedStations => stations
+      .where((item) => item.wasRemovedBeforeStart)
+      .toList(growable: false);
+
+  StationRecord? get nextPending => pendingStations.firstOrNull;
+
+  List<StationRecord> get executableStations => stations
+      .where((item) => !item.wasRemovedBeforeStart)
+      .toList(growable: false);
+
+  int get currentOrdinal {
+    final active = current;
+    if (active == null) return 0;
+    return executableStations.indexWhere((item) => item.id == active.id) + 1;
+  }
+
   StationRecord? get nextAfterTransition {
     final source = transitionSource;
     if (source == null) return null;
-    return stations
-        .where((item) => item.sequenceIndex == source.sequenceIndex + 1)
-        .firstOrNull;
+    return nextPending;
   }
 
   /// Only the station immediately before the current flow position can be
@@ -165,6 +184,85 @@ final class TrainingTimerController
     }
   }
 
+  /// Completes a transition when every remaining project was removed from the
+  /// queue while the transition timer was running.
+  Future<bool> finishAfterTransition() async {
+    final value = state.requireValue;
+    final source = value.transitionSource;
+    if (source == null || value.nextPending != null || value.isSaving) {
+      return false;
+    }
+    state = AsyncData(value.copyWith(isSaving: true));
+    final now = _clock.now();
+    try {
+      await _repository.finishTransitionAndCompleteSession(
+        sessionId: value.session.id,
+        fromStationId: source.id,
+        at: now,
+      );
+      _ticker?.cancel();
+      ref.invalidate(trainingSessionsProvider);
+      ref.invalidate(trainingReportProvider(value.session.id));
+      final refreshed = await _repository.listStations(value.session.id);
+      state = AsyncData(
+        value.copyWith(stations: refreshed, now: now, isSaving: false),
+      );
+      return true;
+    } catch (_) {
+      state = AsyncData(value.copyWith(now: now, isSaving: false));
+      rethrow;
+    }
+  }
+
+  Future<void> reorderPendingStations(List<int> orderedStationIds) async {
+    await _updateQueue(
+      (value, now) => _repository.reorderPendingStations(
+        sessionId: value.session.id,
+        orderedStationIds: orderedStationIds,
+        changedAt: now,
+      ),
+    );
+  }
+
+  Future<int?> addPendingStation(
+    TemplateSegmentInput segment, {
+    required bool insertAsNext,
+  }) async {
+    int? stationId;
+    await _updateQueue((value, now) async {
+      stationId = await _repository.addPendingStation(
+        sessionId: value.session.id,
+        segment: segment,
+        insertAsNext: insertAsNext,
+        changedAt: now,
+      );
+    });
+    return stationId;
+  }
+
+  Future<void> skipPendingStation(int stationId, {required String reason}) =>
+      _updateQueue(
+        (value, now) => _repository.skipPendingStation(
+          sessionId: value.session.id,
+          stationId: stationId,
+          reason: reason,
+          changedAt: now,
+        ),
+      );
+
+  Future<void> restoreSkippedPendingStation(
+    int stationId, {
+    required int pendingIndex,
+  }) =>
+      _updateQueue(
+        (value, now) => _repository.restoreSkippedPendingStation(
+          sessionId: value.session.id,
+          stationId: stationId,
+          pendingIndex: pendingIndex,
+          changedAt: now,
+        ),
+      );
+
   Future<void> updateActualPerformance(
     int stationId,
     StationActualPerformance actualPerformance,
@@ -231,6 +329,25 @@ final class TrainingTimerController
     }
   }
 
+  Future<void> _updateQueue(
+    Future<void> Function(TrainingTimerState value, DateTime now) operation,
+  ) async {
+    final value = state.requireValue;
+    if (value.isSaving) return;
+    state = AsyncData(value.copyWith(isSaving: true));
+    final now = _clock.now();
+    try {
+      await operation(value, now);
+      final refreshed = await _repository.listStations(value.session.id);
+      state = AsyncData(
+        value.copyWith(stations: refreshed, now: now, isSaving: false),
+      );
+    } catch (_) {
+      state = AsyncData(value.copyWith(now: now, isSaving: false));
+      rethrow;
+    }
+  }
+
   /// Returns true when the entire simulation has completed.
   Future<bool> _advance({
     required bool skip,
@@ -242,9 +359,9 @@ final class TrainingTimerController
     state = AsyncData(value.copyWith(isSaving: true));
 
     final now = _clock.now();
-    final nextIndex = current.sequenceIndex + 1;
-    final completed = nextIndex >= value.stations.length;
-    final nextStationId = completed ? null : value.stations[nextIndex].id;
+    final next = value.nextPending;
+    final completed = next == null;
+    final nextStationId = next?.id;
     try {
       await _repository.finishStationAndAdvance(
         sessionId: value.session.id,

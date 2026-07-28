@@ -4,6 +4,8 @@ enum TrainingStatus { draft, inProgress, completed, cancelled }
 
 enum SegmentStatus { pending, active, completed, skipped }
 
+enum StationRecordOrigin { template, adHoc }
+
 enum TrainingSegmentKind { station, rest, warmup, cooldown }
 
 enum AthleteAssignment { self, partner, both }
@@ -91,6 +93,8 @@ final class StationRecord {
     required this.type,
     required this.sequenceIndex,
     required this.status,
+    this.plannedSequenceIndex,
+    this.origin = StationRecordOrigin.template,
     this.segmentKind = TrainingSegmentKind.station,
     this.runNumber,
     this.startedAt,
@@ -109,13 +113,16 @@ final class StationRecord {
     this.transitionStartedAt,
     this.transitionEndedAt,
     this.transitionDuration,
+    this.skipReason,
   });
 
   final int id;
   final int sessionId;
   final StationType type;
   final int? runNumber;
+  final int? plannedSequenceIndex;
   final int sequenceIndex;
+  final StationRecordOrigin origin;
   final SegmentStatus status;
   final TrainingSegmentKind segmentKind;
   final DateTime? startedAt;
@@ -134,6 +141,12 @@ final class StationRecord {
   final DateTime? transitionStartedAt;
   final DateTime? transitionEndedAt;
   final Duration? transitionDuration;
+  final String? skipReason;
+
+  bool get isAdHoc => origin == StationRecordOrigin.adHoc;
+
+  bool get wasRemovedBeforeStart =>
+      status == SegmentStatus.skipped && startedAt == null;
 
   bool get isTransitionActive =>
       transitionStartedAt != null && transitionEndedAt == null;
@@ -201,6 +214,8 @@ final class StationRecord {
       sessionId: sessionId,
       type: type,
       sequenceIndex: sequenceIndex,
+      plannedSequenceIndex: plannedSequenceIndex,
+      origin: origin,
       status: status ?? this.status,
       segmentKind: segmentKind,
       runNumber: runNumber,
@@ -220,6 +235,7 @@ final class StationRecord {
       transitionStartedAt: transitionStartedAt,
       transitionEndedAt: transitionEndedAt,
       transitionDuration: transitionDuration,
+      skipReason: skipReason,
     );
   }
 }

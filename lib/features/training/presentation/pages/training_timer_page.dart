@@ -6,6 +6,7 @@ import '../../domain/models/training_models.dart';
 import '../controllers/training_timer_controller.dart';
 import '../formatters/training_formatters.dart';
 import '../widgets/station_actual_editor.dart';
+import '../widgets/training_queue_sheet.dart';
 
 class TrainingTimerPage extends ConsumerStatefulWidget {
   const TrainingTimerPage({required this.sessionId, super.key});
@@ -64,10 +65,8 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
               : Text(timer.requireValue.session.title),
           actions: [
             IconButton(
-              tooltip: '项目进度',
-              onPressed: timer.valueOrNull == null
-                  ? null
-                  : () => _showProgress(context, timer.requireValue),
+              tooltip: '训练队列',
+              onPressed: timer.valueOrNull == null ? null : _openTrainingQueue,
               icon: const Icon(Icons.format_list_numbered_rounded),
             ),
             IconButton(
@@ -106,6 +105,8 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
                 return _TransitionTimerBody(
                   state: value,
                   onStartNext: _startNextAfterTransition,
+                  onFinish: _finishAfterTransition,
+                  onAdjustNext: _openTrainingQueue,
                   onEditActual: () => _editActual(value.transitionSource!),
                   onUndoCompletion: () => _confirmUndoCompletion(value),
                 );
@@ -146,8 +147,8 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
                         child: Column(
                           children: [
                             Text(
-                              '当前项目 ${current.sequenceIndex + 1}/'
-                              '${value.stations.length}',
+                              '当前项目 ${value.currentOrdinal}/'
+                              '${value.executableStations.length}',
                               style: const TextStyle(color: Colors.white54),
                             ),
                             const SizedBox(height: 8),
@@ -181,6 +182,13 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
                     ),
                     const SizedBox(height: 16),
                     _ProgressDots(stations: value.stations),
+                    if (value.nextPending != null) ...[
+                      const SizedBox(height: 12),
+                      _NextStationCard(
+                        station: value.nextPending!,
+                        onAdjust: value.isSaving ? null : _openTrainingQueue,
+                      ),
+                    ],
                     const Spacer(),
                     if (value.session.mode != TrainingMode.single) ...[
                       Text(
@@ -269,6 +277,22 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
     }
   }
 
+  Future<void> _finishAfterTransition() async {
+    try {
+      final done = await ref
+          .read(trainingTimerProvider(sessionId).notifier)
+          .finishAfterTransition();
+      if (done && mounted) _showCompletedReport();
+    } catch (error) {
+      _showError('结束训练失败：$error');
+    }
+  }
+
+  Future<void> _openTrainingQueue() => showTrainingQueueSheet(
+        context: context,
+        sessionId: sessionId,
+      );
+
   Future<void> _editActual(StationRecord station) async {
     final actual = await showStationActualEditor(context, station);
     if (actual == null || !mounted) return;
@@ -326,7 +350,7 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
   Future<bool?> _chooseNextStep(TrainingTimerState value) async {
     final current = value.current;
     if (current == null) return null;
-    if (current.sequenceIndex >= value.stations.length - 1) return false;
+    if (value.nextPending == null) return false;
     return showModalBottomSheet<bool>(
       context: context,
       showDragHandle: true,
@@ -462,19 +486,23 @@ class _TransitionTimerBody extends StatelessWidget {
   const _TransitionTimerBody({
     required this.state,
     required this.onStartNext,
+    required this.onFinish,
+    required this.onAdjustNext,
     required this.onEditActual,
     required this.onUndoCompletion,
   });
 
   final TrainingTimerState state;
   final Future<void> Function() onStartNext;
+  final Future<void> Function() onFinish;
+  final Future<void> Function() onAdjustNext;
   final Future<void> Function() onEditActual;
   final Future<void> Function() onUndoCompletion;
 
   @override
   Widget build(BuildContext context) {
     final source = state.transitionSource!;
-    final next = state.nextAfterTransition!;
+    final next = state.nextAfterTransition;
     return SafeArea(
       top: false,
       minimum: const EdgeInsets.only(bottom: 8),
@@ -508,7 +536,8 @@ class _TransitionTimerBody extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      '${source.displayName}\n→ ${next.displayName}',
+                      '${source.displayName}\n→ '
+                      '${next?.displayName ?? '没有待进行项目'}',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             color: Theme.of(context).colorScheme.primary,
@@ -543,10 +572,32 @@ class _TransitionTimerBody extends StatelessWidget {
               label: const Text('修改上一项实际完成数据'),
             ),
             const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: state.isSaving ? null : onAdjustNext,
+              icon: const Icon(Icons.swap_vert_rounded),
+              label: const Text('调整下一项'),
+            ),
+            const SizedBox(height: 10),
             FilledButton.icon(
-              onPressed: state.isSaving ? null : onStartNext,
-              icon: const Icon(Icons.play_arrow_rounded),
-              label: Text(state.isSaving ? '保存中…' : '开始下一项'),
+              onPressed: state.isSaving
+                  ? null
+                  : next == null
+                      ? onFinish
+                      : onStartNext,
+              icon: Icon(
+                next == null
+                    ? Icons.flag_circle_rounded
+                    : Icons.play_arrow_rounded,
+              ),
+              label: Text(
+                state.isSaving
+                    ? '保存中…'
+                    : next == null
+                        ? '结束训练'
+                        : '开始 ${next.displayName}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
@@ -585,71 +636,31 @@ class _ProgressDots extends StatelessWidget {
       );
 }
 
-void _showProgress(BuildContext context, TrainingTimerState state) {
-  showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    builder: (context) => SafeArea(
-      child: DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.72,
-        maxChildSize: 0.9,
-        builder: (context, controller) => Column(
-          children: [
-            const Padding(
-              padding: EdgeInsets.all(18),
-              child: Text(
-                '项目进度',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-              ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                controller: controller,
-                itemCount: state.stations.length,
-                itemBuilder: (context, index) {
-                  final station = state.stations[index];
-                  final icon = switch (station.status) {
-                    SegmentStatus.completed => Icons.check_circle,
-                    SegmentStatus.active => Icons.play_circle_fill,
-                    SegmentStatus.skipped => Icons.skip_next,
-                    SegmentStatus.pending => Icons.circle_outlined,
-                  };
-                  return ListTile(
-                    leading: Icon(
-                      icon,
-                      color: station.status == SegmentStatus.active
-                          ? Theme.of(context).colorScheme.primary
-                          : null,
-                    ),
-                    title: Text(station.displayName),
-                    subtitle: station.isTransitionActive
-                        ? Text(
-                            '转换中 ${formatDuration(state.now.difference(station.transitionStartedAt!), includeHours: false)}',
-                            style: TextStyle(
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          )
-                        : station.transitionDuration == null
-                            ? null
-                            : Text(
-                                '转换 ${formatDuration(station.transitionDuration, includeHours: false)}',
-                              ),
-                    trailing: Text(
-                      station.status == SegmentStatus.active
-                          ? '进行中'
-                          : formatDuration(
-                              station.duration,
-                              includeHours: false,
-                            ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
+class _NextStationCard extends StatelessWidget {
+  const _NextStationCard({required this.station, required this.onAdjust});
+
+  final StationRecord station;
+  final VoidCallback? onAdjust;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        color: Colors.white.withValues(alpha: 0.04),
+        child: ListTile(
+          dense: true,
+          leading: const Icon(Icons.next_plan_outlined),
+          title: const Text(
+            '下一项',
+            style: TextStyle(color: Colors.white54),
+          ),
+          subtitle: Text(
+            station.displayName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: TextButton(
+            onPressed: onAdjust,
+            child: const Text('调整'),
+          ),
         ),
-      ),
-    ),
-  );
+      );
 }

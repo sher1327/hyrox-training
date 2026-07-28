@@ -1,5 +1,5 @@
 abstract final class DatabaseSchema {
-  static const version = 8;
+  static const version = 9;
 
   static const createTrainingTemplate = '''
 CREATE TABLE training_template (
@@ -78,7 +78,11 @@ CREATE TABLE station_record (
     'row', 'farmer_carry', 'sandbag_lunge', 'wall_ball'
   )),
   run_number INTEGER CHECK(run_number IS NULL OR run_number > 0),
+  planned_sequence_index INTEGER CHECK(
+    planned_sequence_index IS NULL OR planned_sequence_index >= 0
+  ),
   sequence_index INTEGER NOT NULL CHECK(sequence_index >= 0),
+  origin TEXT NOT NULL DEFAULT 'template' CHECK(origin IN ('template', 'ad_hoc')),
   status TEXT NOT NULL CHECK(status IN ('pending', 'active', 'completed', 'skipped')),
   started_at_ms INTEGER,
   ended_at_ms INTEGER,
@@ -99,6 +103,7 @@ CREATE TABLE station_record (
   transition_duration_ms INTEGER CHECK(
     transition_duration_ms IS NULL OR transition_duration_ms >= 0
   ),
+  skip_reason TEXT,
   remark TEXT,
   UNIQUE(session_id, sequence_index)
 )

@@ -348,4 +348,82 @@ void main() {
 
     expect(record.athleteName, '队友乙');
   });
+
+  test('timer chooses the first pending project after a dynamic queue change',
+      () {
+    final transitionStart = DateTime.utc(2026, 7, 29, 8, 5);
+    final state = TrainingTimerState(
+      session: TrainingSession(
+        id: 20,
+        mode: TrainingMode.single,
+        title: '动态队列测试',
+        status: TrainingStatus.inProgress,
+        startedAt: DateTime.utc(2026, 7, 29, 8),
+      ),
+      stations: [
+        StationRecord(
+          id: 201,
+          sessionId: 20,
+          type: StationType.run,
+          runNumber: 1,
+          sequenceIndex: 0,
+          status: SegmentStatus.completed,
+          startedAt: DateTime.utc(2026, 7, 29, 8),
+          transitionStartedAt: transitionStart,
+        ),
+        const StationRecord(
+          id: 204,
+          sessionId: 20,
+          type: StationType.burpeeBroadJump,
+          sequenceIndex: 1,
+          status: SegmentStatus.pending,
+        ),
+        const StationRecord(
+          id: 202,
+          sessionId: 20,
+          type: StationType.skiErg,
+          sequenceIndex: 2,
+          status: SegmentStatus.pending,
+        ),
+        StationRecord(
+          id: 203,
+          sessionId: 20,
+          type: StationType.sledPush,
+          sequenceIndex: 3,
+          status: SegmentStatus.skipped,
+          endedAt: DateTime.utc(2026, 7, 29, 8, 4),
+          skipReason: '训练中调整',
+        ),
+      ],
+      now: transitionStart,
+    );
+
+    expect(state.nextAfterTransition?.id, 204);
+    expect(state.pendingStations.map((item) => item.id), [204, 202]);
+    expect(state.removedStations.single.id, 203);
+    expect(state.executableStations, hasLength(3));
+  });
+
+  test('ad-hoc and removed records retain their queue annotations', () {
+    const added = StationRecord(
+      id: 301,
+      sessionId: 30,
+      type: StationType.row,
+      sequenceIndex: 4,
+      status: SegmentStatus.pending,
+      origin: StationRecordOrigin.adHoc,
+    );
+    const removed = StationRecord(
+      id: 302,
+      sessionId: 30,
+      type: StationType.wallBall,
+      sequenceIndex: 5,
+      status: SegmentStatus.skipped,
+      skipReason: '器械占用',
+    );
+
+    expect(added.isAdHoc, isTrue);
+    expect(removed.wasRemovedBeforeStart, isTrue);
+    expect(removed.skipReason, '器械占用');
+  });
 }

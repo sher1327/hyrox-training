@@ -45,6 +45,34 @@ abstract interface class TrainingRepository {
     required int nextStationId,
     required DateTime at,
   });
+  Future<void> finishTransitionAndCompleteSession({
+    required int sessionId,
+    required int fromStationId,
+    required DateTime at,
+  });
+  Future<void> reorderPendingStations({
+    required int sessionId,
+    required List<int> orderedStationIds,
+    required DateTime changedAt,
+  });
+  Future<int> addPendingStation({
+    required int sessionId,
+    required TemplateSegmentInput segment,
+    required bool insertAsNext,
+    required DateTime changedAt,
+  });
+  Future<void> skipPendingStation({
+    required int sessionId,
+    required int stationId,
+    required String reason,
+    required DateTime changedAt,
+  });
+  Future<void> restoreSkippedPendingStation({
+    required int sessionId,
+    required int stationId,
+    required int pendingIndex,
+    required DateTime changedAt,
+  });
   Future<int> undoLastStationCompletion({
     required int sessionId,
     required DateTime restoredAt,
