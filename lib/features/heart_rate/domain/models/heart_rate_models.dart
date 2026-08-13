@@ -42,6 +42,33 @@ final class HeartRateImportBatch {
   final bool isActive;
 }
 
+extension HeartRateImportBatchDisplay on HeartRateImportBatch {
+  String get sourceLabel => switch (source) {
+        HeartRateSources.ble => '实时心率带',
+        HeartRateSources.intervalsIcu => 'Intervals.icu',
+        HeartRateSources.fit => 'FIT 文件',
+        _ => source,
+      };
+
+  String get displayName {
+    final name = externalActivityName?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    final file = fileName?.trim();
+    if (file != null && file.isNotEmpty) return file;
+    return sourceLabel;
+  }
+}
+
+final class HeartRateSourceData {
+  const HeartRateSourceData({
+    required this.batch,
+    required this.samples,
+  });
+
+  final HeartRateImportBatch batch;
+  final List<HeartRateSample> samples;
+}
+
 final class HeartRateSummary {
   const HeartRateSummary({
     required this.average,
@@ -129,6 +156,7 @@ final class HeartRateImportResult {
 }
 
 abstract final class HeartRateSources {
+  static const ble = 'ble';
   static const fit = 'fit';
   static const intervalsIcu = 'intervals_icu';
 }
