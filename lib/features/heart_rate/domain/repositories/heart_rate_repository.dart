@@ -10,5 +10,19 @@ abstract interface class HeartRateRepository {
     String? fileName,
   });
 
+  Future<int> appendLiveSamples({
+    required int sessionId,
+    required String deviceId,
+    required String deviceName,
+    required List<HeartRateSample> samples,
+  });
+
+  Future<List<HeartRateImportBatch>> listBatches(int sessionId);
   Future<List<HeartRateSample>> listSamples(int sessionId);
+  Future<List<HeartRateSample>> listSamplesByBatch(int importBatchId);
+
+  Future<void> setActiveBatch({
+    required int sessionId,
+    required int importBatchId,
+  });
 }
