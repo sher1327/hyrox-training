@@ -208,7 +208,7 @@ abstract final class Concept2ResultMatcher {
         result.endedAt.difference(sessionEnd).abs().inMilliseconds;
     final localDuration = sessionEnd.difference(sessionStart);
     final durationDifference =
-        result.totalDuration.difference(localDuration).abs().inMilliseconds;
+        (result.totalDuration - localDuration).abs().inMilliseconds;
     return endDifference + durationDifference;
   }
 }
