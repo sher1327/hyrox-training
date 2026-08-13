@@ -69,20 +69,19 @@ class _HeartRateSourcesPageState
                       ),
                       const SizedBox(height: 8),
                       for (final item in items)
-                        RadioListTile<int>(
-                          value: item.batch.id,
-                          groupValue: items
-                              .where((value) => value.batch.isActive)
-                              .firstOrNull
-                              ?.batch
-                              .id,
-                          onChanged: _switching
+                        ListTile(
+                          enabled: !_switching,
+                          onTap: item.batch.isActive || _switching
                               ? null
-                              : (value) {
-                                  if (value != null) {
-                                    _setPrimary(value);
-                                  }
-                                },
+                              : () => _setPrimary(item.batch.id),
+                          leading: Icon(
+                            item.batch.isActive
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_unchecked,
+                            color: item.batch.isActive
+                                ? Theme.of(context).colorScheme.primary
+                                : null,
+                          ),
                           title: Text(item.batch.displayName),
                           subtitle: Text(
                             '${item.batch.sourceLabel} · '
@@ -308,6 +307,3 @@ String _clock(Duration value) {
 
 const _seriesColors = [Color(0xFFFFD719), Colors.redAccent];
 
-extension<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
-}
