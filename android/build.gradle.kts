@@ -18,7 +18,6 @@ subprojects {
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
 subprojects {
-    project.evaluationDependsOn(":app")
     afterEvaluate {
         if (plugins.hasPlugin("com.android.library")) {
             extensions.configure<com.android.build.api.dsl.LibraryExtension> {
@@ -26,6 +25,9 @@ subprojects {
             }
         }
     }
+}
+subprojects {
+    project.evaluationDependsOn(":app")
 }
 
 tasks.register<Delete>("clean") {
