@@ -441,6 +441,3 @@ String _dateTime(DateTime value) {
       '${two(local.hour)}:${two(local.minute)}';
 }
 
-extension on Duration {
-  Duration abs() => isNegative ? -this : this;
-}

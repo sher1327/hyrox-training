@@ -213,7 +213,3 @@ abstract final class Concept2ResultMatcher {
   }
 }
 
-extension on Duration {
-  Duration abs() => isNegative ? -this : this;
-  Duration difference(Duration other) => this - other;
-}
