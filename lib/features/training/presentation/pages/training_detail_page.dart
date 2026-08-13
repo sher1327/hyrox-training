@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../concept2/domain/models/concept2_models.dart';
+import '../../../concept2/presentation/controllers/concept2_providers.dart';
 import '../../../heart_rate/data/services/intervals_icu_client.dart';
 import '../../../backup/presentation/controllers/database_backup_providers.dart';
 import '../../../heart_rate/domain/models/heart_rate_models.dart';
@@ -34,6 +36,10 @@ class TrainingDetailPage extends ConsumerWidget {
     final heartRate = ref.watch(heartRateAnalysisProvider(sessionId));
     final importing = ref.watch(heartRateImportingProvider(sessionId));
     final exporting = ref.watch(trainingReplayExportingProvider(sessionId));
+    final supportsConcept2 = _supportsConcept2(report.valueOrNull);
+    final concept2 = supportsConcept2
+        ? ref.watch(concept2ResultProvider(sessionId))
+        : const AsyncValue<Concept2Result?>.data(null);
     return PopScope(
       canPop: !returnHomeOnBack,
       onPopInvokedWithResult: (didPop, _) {
@@ -59,8 +65,7 @@ class TrainingDetailPage extends ConsumerWidget {
             if (_supportsConcept2(report.valueOrNull))
               IconButton(
                 tooltip: 'Concept2 器械数据',
-                onPressed: () =>
-                    context.push('/training/$sessionId/concept2'),
+                onPressed: () => context.push('/training/$sessionId/concept2'),
                 icon: const Icon(Icons.sports_gymnastics_rounded),
               ),
             IconButton(
@@ -143,6 +148,7 @@ class TrainingDetailPage extends ConsumerWidget {
                   heartRate: heartRate,
                   importing: importing,
                   exporting: exporting,
+                  concept2: concept2,
                   onImportHeartRate: () =>
                       _showHeartRateImportOptions(context, ref, value.session),
                   onReplay: () => context.push('/training/$sessionId/replay'),
@@ -155,6 +161,9 @@ class TrainingDetailPage extends ConsumerWidget {
                     '/training/$sessionId/breakdown/'
                     '${TrainingBreakdownKind.station.routeName}',
                   ),
+                  onConcept2: supportsConcept2
+                      ? () => context.push('/training/$sessionId/concept2')
+                      : null,
                   onUndoFinalCompletion: returnHomeOnBack &&
                           value.session.status == TrainingStatus.completed
                       ? () => _undoFinalCompletion(context, ref, value)
@@ -728,11 +737,13 @@ class _ReportBody extends StatelessWidget {
     required this.heartRate,
     required this.importing,
     required this.exporting,
+    required this.concept2,
     required this.onImportHeartRate,
     required this.onReplay,
     required this.onExportReplay,
     required this.onRunningBreakdown,
     required this.onStationBreakdown,
+    required this.onConcept2,
     required this.onUndoFinalCompletion,
     required this.onEditActual,
     required this.onEditReflection,
@@ -742,11 +753,13 @@ class _ReportBody extends StatelessWidget {
   final AsyncValue<HeartRateAnalysis> heartRate;
   final bool importing;
   final bool exporting;
+  final AsyncValue<Concept2Result?> concept2;
   final VoidCallback onImportHeartRate;
   final VoidCallback onReplay;
   final VoidCallback onExportReplay;
   final VoidCallback onRunningBreakdown;
   final VoidCallback onStationBreakdown;
+  final VoidCallback? onConcept2;
   final VoidCallback? onUndoFinalCompletion;
   final ValueChanged<StationRecord> onEditActual;
   final VoidCallback onEditReflection;
@@ -860,6 +873,24 @@ class _ReportBody extends StatelessWidget {
               report.session.avgHeartRate == null ? '导入心率' : '重新导入心率',
             ),
           ),
+          if (onConcept2 != null) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: onConcept2,
+              icon: const Icon(Icons.sports_gymnastics_rounded),
+              label: Text(
+                concept2.when(
+                  loading: () => '正在读取 Concept2 同步状态…',
+                  error: (_, __) => 'Concept2 状态读取失败，点击重试',
+                  data: (value) => value == null
+                      ? 'Concept2 PM5 · 待同步'
+                      : 'Concept2 PM5 · 已同步 '
+                          '${value.intervals.length} 个分段 · '
+                          '${value.strokes.length} 条逐桨',
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
           FilledButton.icon(
             onPressed: (report.session.heartRateSampleCount ?? 0) > 0

@@ -1,3 +1,4 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -95,8 +96,7 @@ class _Concept2SyncPageState extends ConsumerState<Concept2SyncPage> {
     required DateTime sessionStart,
     required DateTime sessionEnd,
   }) async {
-    var credentials =
-        await ref.read(concept2CredentialsStoreProvider).read();
+    var credentials = await ref.read(concept2CredentialsStoreProvider).read();
     credentials ??= await _requestToken();
     if (credentials == null || !mounted) return;
     setState(() => _syncing = true);
@@ -119,7 +119,12 @@ class _Concept2SyncPageState extends ConsumerState<Concept2SyncPage> {
           '没有找到时间接近的${machine.label}记录。请先确认 ErgData 已上传 Logbook。',
         );
       }
-      final selected = candidates.length == 1
+      final selected = candidates.length == 1 &&
+              Concept2ResultMatcher.isHighConfidence(
+                result: candidates.single,
+                sessionStart: sessionStart,
+                sessionEnd: sessionEnd,
+              )
           ? candidates.single
           : await _selectCandidate(candidates);
       if (selected == null || !mounted) return;
@@ -127,17 +132,38 @@ class _Concept2SyncPageState extends ConsumerState<Concept2SyncPage> {
         credentials: credentials,
         resultId: selected.id,
       );
+      var strokes = const <Concept2Stroke>[];
+      String? strokeWarning;
+      try {
+        strokes = await client.getStrokes(
+          credentials: credentials,
+          resultId: selected.id,
+        );
+      } on Concept2ApiException catch (error) {
+        if (error.credentialsRejected) rethrow;
+        strokeWarning = error.message;
+      } on FormatException catch (error) {
+        strokeWarning = error.message;
+      }
       final repository =
           await ref.read(concept2RepositoryFutureProvider.future);
       await repository.saveForSession(
         sessionId: widget.sessionId,
-        result: detail,
+        result: detail.copyWithStrokes(strokes),
         importedAt: DateTime.now().toUtc(),
       );
       ref.invalidate(concept2ResultProvider(widget.sessionId));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Concept2 器械数据已保存到本地')),
+          SnackBar(
+            content: Text(
+              strokeWarning != null
+                  ? '器械总成绩和间歇已保存；逐桨数据暂未同步：$strokeWarning'
+                  : strokes.isEmpty
+                      ? '器械总成绩和间歇已保存；这条记录没有逐桨数据'
+                      : '器械数据已保存，包含 ${strokes.length} 条逐桨采样',
+            ),
+          ),
         );
       }
     } on Concept2ApiException catch (error) {
@@ -218,10 +244,13 @@ class _Concept2SyncPageState extends ConsumerState<Concept2SyncPage> {
                 onTap: () => Navigator.pop(context, item),
                 leading: const Icon(Icons.sports_gymnastics_rounded),
                 title: Text(
-                  '${item.distanceMeters} m · ${_duration(item.workDuration)}',
+                  '${item.distanceMeters} m · '
+                  '${_duration(item.totalDuration)}',
                 ),
                 subtitle: Text(
-                  '${_dateTime(item.endedAt)}结束 · ${item.workoutType}',
+                  '${_dateTime(item.endedAt)}结束 · '
+                  '工作 ${_duration(item.workDuration)} · '
+                  '${item.workoutType}',
                 ),
                 trailing: const Icon(Icons.chevron_right),
               ),
@@ -264,8 +293,8 @@ class _SyncStatusCard extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 hasResult
-                    ? '已保存器械总成绩和内部间歇；重新同步会替换这份器械数据。'
-                    : 'App 只记录整场时间；PM5 的间歇结构由 Logbook 补全。',
+                    ? '已保存总成绩、内部间歇和可用的逐桨数据；重新同步会替换这份器械数据。'
+                    : 'App 只记录整场时间；PM5 的间歇和逐桨数据由 Logbook 补全。',
               ),
               const SizedBox(height: 14),
               FilledButton.icon(
@@ -277,7 +306,11 @@ class _SyncStatusCard extends StatelessWidget {
                       )
                     : const Icon(Icons.cloud_download_rounded),
                 label: Text(
-                  syncing ? '正在查找 Logbook 记录…' : hasResult ? '重新同步' : '同步器械数据',
+                  syncing
+                      ? '正在查找 Logbook 记录…'
+                      : hasResult
+                          ? '重新同步'
+                          : '同步器械数据',
                 ),
               ),
             ],
@@ -348,6 +381,22 @@ class _ResultDetails extends StatelessWidget {
             ),
           ),
         ),
+        if (result.strokes.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          Text('逐桨表现曲线', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          _StrokeCharts(strokes: result.strokes),
+        ] else ...[
+          const SizedBox(height: 14),
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                '这条 Logbook 记录没有逐桨数据。总成绩与间歇仍可正常使用；是否提供逐桨数据取决于 PM5/ErgData 的上传内容。',
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 18),
         Text('PM5 内部间歇', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
@@ -371,6 +420,165 @@ class _ResultDetails extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _StrokeCharts extends StatelessWidget {
+  const _StrokeCharts({required this.strokes});
+
+  final List<Concept2Stroke> strokes;
+
+  @override
+  Widget build(BuildContext context) {
+    final pace =
+        strokes.where((stroke) => (stroke.paceTenths ?? 0) > 0).toList();
+    final strokeRate =
+        strokes.where((stroke) => (stroke.strokeRate ?? 0) > 0).toList();
+    return Column(
+      children: [
+        if (pace.isNotEmpty)
+          _StrokeChartCard(
+            title: '500m 配速',
+            unit: '秒',
+            strokes: pace,
+            value: (stroke) => stroke.paceTenths! / 10,
+            color: Colors.orangeAccent,
+            invertYAxis: true,
+          ),
+        if (pace.isNotEmpty && strokeRate.isNotEmpty)
+          const SizedBox(height: 10),
+        if (strokeRate.isNotEmpty)
+          _StrokeChartCard(
+            title: '划频',
+            unit: 'SPM',
+            strokes: strokeRate,
+            value: (stroke) => stroke.strokeRate!.toDouble(),
+            color: Colors.lightBlueAccent,
+          ),
+      ],
+    );
+  }
+}
+
+class _StrokeChartCard extends StatelessWidget {
+  const _StrokeChartCard({
+    required this.title,
+    required this.unit,
+    required this.strokes,
+    required this.value,
+    required this.color,
+    this.invertYAxis = false,
+  });
+
+  final String title;
+  final String unit;
+  final List<Concept2Stroke> strokes;
+  final double Function(Concept2Stroke) value;
+  final Color color;
+  final bool invertYAxis;
+
+  @override
+  Widget build(BuildContext context) {
+    final values = strokes.map(value).toList();
+    final lowest = values.reduce((a, b) => a < b ? a : b);
+    final highest = values.reduce((a, b) => a > b ? a : b);
+    final minY = (lowest - 5).clamp(0, double.infinity).toDouble();
+    final maxY = highest + 5 <= minY ? minY + 10 : highest + 5;
+    final maxX = strokes.last.cumulativeWorkTenths / 10;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 14, 18, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('$title（$unit）',
+                style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 210,
+              child: LineChart(
+                LineChartData(
+                  minX: 0,
+                  maxX: maxX <= 0 ? 1 : maxX,
+                  minY: minY,
+                  maxY: maxY,
+                  clipData: const FlClipData.all(),
+                  gridData: const FlGridData(drawVerticalLine: false),
+                  borderData: FlBorderData(
+                    show: true,
+                    border: const Border(
+                      left: BorderSide(color: Colors.white12),
+                      bottom: BorderSide(color: Colors.white12),
+                    ),
+                  ),
+                  titlesData: FlTitlesData(
+                    topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 42,
+                        getTitlesWidget: (number, _) => Text(
+                          number.round().toString(),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.white54,
+                          ),
+                        ),
+                      ),
+                    ),
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 28,
+                        interval:
+                            (maxX / 4).clamp(1, double.infinity).toDouble(),
+                        getTitlesWidget: (number, _) => Text(
+                          _duration(Duration(seconds: number.round())),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.white54,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: [
+                        for (final stroke in strokes)
+                          FlSpot(
+                            stroke.cumulativeWorkTenths / 10,
+                            value(stroke),
+                          ),
+                      ],
+                      color: color,
+                      barWidth: 2.2,
+                      isCurved: true,
+                      curveSmoothness: .16,
+                      dotData: const FlDotData(show: false),
+                      // fl_chart currently has no inverted axis switch. Pace
+                      // values remain literal seconds so tooltips stay clear.
+                    ),
+                  ],
+                ),
+                duration: const Duration(milliseconds: 120),
+              ),
+            ),
+            if (invertYAxis)
+              const Text(
+                '数值越低代表配速越快',
+                textAlign: TextAlign.end,
+                style: TextStyle(fontSize: 11, color: Colors.white54),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -431,7 +639,8 @@ String _signedDuration(Duration value) {
 
 String _pace(int timeTenths, int distanceMeters) {
   if (distanceMeters <= 0) return '--';
-  return _duration(Duration(milliseconds: (timeTenths * 100 * 500 / distanceMeters).round()));
+  return _duration(Duration(
+      milliseconds: (timeTenths * 100 * 500 / distanceMeters).round()));
 }
 
 String _dateTime(DateTime value) {
@@ -440,4 +649,3 @@ String _dateTime(DateTime value) {
   return '${two(local.month)}-${two(local.day)} '
       '${two(local.hour)}:${two(local.minute)}';
 }
-

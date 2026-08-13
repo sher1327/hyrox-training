@@ -63,32 +63,71 @@ final class Concept2LogbookClient {
     );
   }
 
+  Future<List<Concept2Stroke>> getStrokes({
+    required Concept2Credentials credentials,
+    required int resultId,
+  }) async {
+    final uri = Uri.https(
+      'log.concept2.com',
+      '/api/users/me/results/$resultId/strokes',
+    );
+    late final http.Response response;
+    try {
+      response = await _client
+          .get(
+            uri,
+            headers: _headers(credentials),
+          )
+          .timeout(const Duration(seconds: 25));
+    } catch (_) {
+      throw const Concept2ApiException('无法连接 Concept2 Logbook，请检查网络');
+    }
+    // Stroke data is optional in Logbook. A missing export must not prevent
+    // the total result and interval data from being synchronized.
+    if (response.statusCode == 404) return const [];
+    _throwForFailure(response);
+    final body = jsonDecode(response.body);
+    if (body is! Map || body['data'] is! List) {
+      throw const FormatException('Concept2 逐桨数据格式不正确');
+    }
+    return Concept2Stroke.listFromJson(
+      (body['data'] as List).cast<Object?>(),
+    );
+  }
+
   Future<http.Response> _get(
     Uri uri,
     Concept2Credentials credentials,
   ) async {
     late final http.Response response;
     try {
-      response = await _client.get(
-        uri,
-        headers: {
-          'Authorization': 'Bearer ${credentials.accessToken}',
-          'Accept': 'application/vnd.c2logbook.v1+json',
-          'User-Agent': 'HYROX-Training-Tracker/1.0',
-        },
-      ).timeout(const Duration(seconds: 25));
+      response = await _client
+          .get(
+            uri,
+            headers: _headers(credentials),
+          )
+          .timeout(const Duration(seconds: 25));
     } catch (_) {
       throw const Concept2ApiException('无法连接 Concept2 Logbook，请检查网络');
     }
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final message = switch (response.statusCode) {
-        401 || 403 => 'Concept2 授权 Token 无效或已失效',
-        404 => 'Concept2 训练记录不存在',
-        _ => 'Concept2 请求失败（${response.statusCode}）',
-      };
-      throw Concept2ApiException(message, statusCode: response.statusCode);
-    }
+    _throwForFailure(response);
     return response;
+  }
+
+  Map<String, String> _headers(Concept2Credentials credentials) => {
+        'Authorization': 'Bearer ${credentials.accessToken}',
+        'Accept': 'application/vnd.c2logbook.v1+json',
+        'User-Agent': 'HYROX-Training-Tracker/1.0',
+      };
+
+  void _throwForFailure(http.Response response) {
+    if (response.statusCode >= 200 && response.statusCode < 300) return;
+    final message = switch (response.statusCode) {
+      401 || 403 => 'Concept2 授权 Token 无效或已失效',
+      404 => 'Concept2 训练记录不存在',
+      _ => 'Concept2 请求失败（${response.statusCode}）',
+    };
+    throw Concept2ApiException(message, statusCode: response.statusCode);
   }
 
   String _date(DateTime value) {

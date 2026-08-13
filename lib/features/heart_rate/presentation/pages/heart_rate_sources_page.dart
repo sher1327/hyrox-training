@@ -17,8 +17,7 @@ class HeartRateSourcesPage extends ConsumerStatefulWidget {
       _HeartRateSourcesPageState();
 }
 
-class _HeartRateSourcesPageState
-    extends ConsumerState<HeartRateSourcesPage> {
+class _HeartRateSourcesPageState extends ConsumerState<HeartRateSourcesPage> {
   final Set<int> _visibleBatchIds = {};
   bool _switching = false;
 
@@ -45,9 +44,8 @@ class _HeartRateSourcesPageState
           ].take(2).map((item) => item.batch.id).toSet();
           final visible =
               _visibleBatchIds.isEmpty ? defaults : _visibleBatchIds;
-          final shown = items
-              .where((item) => visible.contains(item.batch.id))
-              .toList();
+          final shown =
+              items.where((item) => visible.contains(item.batch.id)).toList();
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
             children: [
@@ -208,12 +206,10 @@ class _ComparisonChart extends StatelessWidget {
     final end = samples
         .map((sample) => sample.timestamp)
         .reduce((a, b) => a.isAfter(b) ? a : b);
-    final minimum = samples
-        .map((sample) => sample.bpm)
-        .reduce((a, b) => a < b ? a : b);
-    final maximum = samples
-        .map((sample) => sample.bpm)
-        .reduce((a, b) => a > b ? a : b);
+    final minimum =
+        samples.map((sample) => sample.bpm).reduce((a, b) => a < b ? a : b);
+    final maximum =
+        samples.map((sample) => sample.bpm).reduce((a, b) => a > b ? a : b);
     final minY = (minimum - 10).clamp(30, 240).toDouble();
     final maxY = (maximum + 10).clamp(minY + 20, 260).toDouble();
     final maxX =
@@ -306,4 +302,3 @@ String _clock(Duration value) {
 }
 
 const _seriesColors = [Color(0xFFFFD719), Colors.redAccent];
-

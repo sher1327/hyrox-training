@@ -57,8 +57,7 @@ final heartRateAnalysisProvider = FutureProvider.autoDispose
 
 final heartRateSourcesProvider = FutureProvider.autoDispose
     .family<List<HeartRateSourceData>, int>((ref, sessionId) async {
-  final repository =
-      await ref.watch(heartRateRepositoryFutureProvider.future);
+  final repository = await ref.watch(heartRateRepositoryFutureProvider.future);
   final batches = await repository.listBatches(sessionId);
   return Future.wait(
     batches.map(

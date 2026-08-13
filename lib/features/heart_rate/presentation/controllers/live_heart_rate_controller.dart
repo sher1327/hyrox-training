@@ -34,8 +34,7 @@ final class LiveHeartRateState {
   final int savedSampleCount;
   final String? message;
 
-  bool get isConnected =>
-      status == BleHeartRateConnectionStatus.connected;
+  bool get isConnected => status == BleHeartRateConnectionStatus.connected;
 
   LiveHeartRateState copyWith({
     BleHeartRateConnectionStatus? status,
@@ -65,7 +64,7 @@ final class LiveHeartRateController
   Timer? _scanTimer;
   Timer? _flushTimer;
   final List<HeartRateSample> _buffer = [];
-  bool _flushing = false;
+  Future<void>? _activeFlush;
 
   @override
   LiveHeartRateState build(int arg) {
@@ -151,6 +150,9 @@ final class LiveHeartRateController
             break;
           case DeviceConnectionState.disconnecting:
           case DeviceConnectionState.disconnected:
+            _flushTimer?.cancel();
+            unawaited(_measurementSubscription?.cancel());
+            unawaited(_flush());
             state = state.copyWith(
               status: BleHeartRateConnectionStatus.disconnected,
               message: '心率带已断开，可重新扫描连接',
@@ -204,30 +206,50 @@ final class LiveHeartRateController
   }
 
   Future<void> _flush() async {
+    final previous = _activeFlush;
+    late final Future<void> operation;
+    operation = () async {
+      try {
+        // A timer flush may still be writing when the workout ends. Queue this
+        // drain behind it so samples received meanwhile cannot be lost.
+        if (previous != null) await previous;
+        await _flushOnce();
+      } finally {
+        if (identical(_activeFlush, operation)) _activeFlush = null;
+      }
+    }();
+    _activeFlush = operation;
+    return operation;
+  }
+
+  Future<void> _flushOnce() async {
     final device = state.connectedDevice;
-    if (_flushing || device == null || _buffer.isEmpty) return;
-    _flushing = true;
+    if (device == null || _buffer.isEmpty) return;
     final samples = List<HeartRateSample>.of(_buffer);
     _buffer.clear();
     try {
-      final repository =
-          await ref.read(heartRateRepositoryFutureProvider.future);
-      await repository.appendLiveSamples(
-        sessionId: arg,
-        deviceId: device.id,
-        deviceName: device.displayName,
-        samples: samples,
-      );
-      state = state.copyWith(
-        savedSampleCount: state.savedSampleCount + samples.length,
-      );
-      ref.invalidate(heartRateAnalysisProvider(arg));
-      ref.invalidate(heartRateSourcesProvider(arg));
+      await _writeSamples(device, samples);
     } catch (error) {
       _buffer.insertAll(0, samples);
       state = state.copyWith(message: '心率保存失败：$error');
-    } finally {
-      _flushing = false;
     }
+  }
+
+  Future<void> _writeSamples(
+    BleHeartRateDevice device,
+    List<HeartRateSample> samples,
+  ) async {
+    final repository = await ref.read(heartRateRepositoryFutureProvider.future);
+    await repository.appendLiveSamples(
+      sessionId: arg,
+      deviceId: device.id,
+      deviceName: device.displayName,
+      samples: samples,
+    );
+    state = state.copyWith(
+      savedSampleCount: state.savedSampleCount + samples.length,
+    );
+    ref.invalidate(heartRateAnalysisProvider(arg));
+    ref.invalidate(heartRateSourcesProvider(arg));
   }
 }

@@ -43,10 +43,30 @@ void main() {
     expect(result.restDuration, const Duration(minutes: 2));
     expect(result.intervals, hasLength(2));
     expect(result.intervals.last.strokeRate, 31);
-    expect(result.intervals.last.workDuration, const Duration(minutes: 4, seconds: 2));
+    expect(
+      result.intervals.last.workDuration,
+      const Duration(minutes: 4, seconds: 2),
+    );
   });
 
-  test('matcher prefers end time and total duration closest to app session', () {
+  test('stroke time becomes a continuous work timeline across intervals', () {
+    final strokes = Concept2Stroke.listFromJson([
+      {'t': 10, 'd': 20, 'p': 1200, 'spm': 28},
+      {'t': 100, 'd': 200, 'p': 1180, 'spm': 29},
+      {'t': 8, 'd': 18, 'p': 1190, 'spm': 30},
+      {'t': 90, 'd': 190, 'p': 1170, 'spm': 31},
+    ]);
+
+    expect(
+      strokes.map((value) => value.cumulativeWorkTenths),
+      [10, 100, 108, 190],
+    );
+    expect(strokes.last.elapsedWork, const Duration(seconds: 19));
+    expect(strokes.last.distanceMeters, 19);
+  });
+
+  test('matcher prefers end time and total duration closest to app session',
+      () {
     final sessionEnd = DateTime.utc(2026, 8, 13, 4);
     final sessionStart = sessionEnd.subtract(const Duration(minutes: 10));
     Concept2Result result(int id, int endOffsetMinutes, int totalTenths) =>
@@ -68,6 +88,40 @@ void main() {
     );
 
     expect(matches.first.id, 2);
+  });
+
+  test('matcher only auto-imports a close result with similar duration', () {
+    final start = DateTime.utc(2026, 8, 14, 10);
+    final end = start.add(const Duration(minutes: 20));
+    Concept2Result result(int id, DateTime endedAt, int workTimeTenths) =>
+        Concept2Result(
+          id: id,
+          machine: Concept2Machine.rower,
+          endedAt: endedAt,
+          distanceMeters: 5000,
+          workTimeTenths: workTimeTenths,
+          workoutType: 'JustRow',
+          intervals: const [],
+        );
+    final close = result(1, end.add(const Duration(minutes: 3)), 11400);
+    final distant = result(2, end.add(const Duration(minutes: 40)), 12000);
+
+    expect(
+      Concept2ResultMatcher.isHighConfidence(
+        result: close,
+        sessionStart: start,
+        sessionEnd: end,
+      ),
+      isTrue,
+    );
+    expect(
+      Concept2ResultMatcher.isHighConfidence(
+        result: distant,
+        sessionStart: start,
+        sessionEnd: end,
+      ),
+      isFalse,
+    );
   });
 
   test('client sends bearer token and parses result list', () async {
@@ -102,5 +156,42 @@ void main() {
 
     expect(results.single.id, 8);
     expect(results.single.machine, Concept2Machine.skierg);
+  });
+
+  test('client treats missing stroke data as optional', () async {
+    final client = Concept2LogbookClient(
+      client: MockClient((_) async => http.Response('', 404)),
+    );
+
+    final strokes = await client.getStrokes(
+      credentials: const Concept2Credentials('personal-token'),
+      resultId: 8,
+    );
+
+    expect(strokes, isEmpty);
+  });
+
+  test('client parses Concept2 stroke data', () async {
+    final client = Concept2LogbookClient(
+      client: MockClient(
+        (_) async => http.Response(
+          jsonEncode({
+            'data': [
+              {'t': 12, 'd': 25, 'p': 1210, 'spm': 27, 'hr': 145},
+            ],
+          }),
+          200,
+        ),
+      ),
+    );
+
+    final strokes = await client.getStrokes(
+      credentials: const Concept2Credentials('personal-token'),
+      resultId: 8,
+    );
+
+    expect(strokes.single.paceTenths, 1210);
+    expect(strokes.single.strokeRate, 27);
+    expect(strokes.single.heartRate, 145);
   });
 }

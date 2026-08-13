@@ -12,7 +12,8 @@ final class SqliteConcept2Repository implements Concept2Repository {
     final rows = await _dao.getForSession(sessionId);
     if (rows.isEmpty) return null;
     final row = rows.single;
-    final intervals = (await _dao.listIntervals(row['id']! as int))
+    final resultRowId = row['id']! as int;
+    final intervals = (await _dao.listIntervals(resultRowId))
         .map(
           (value) => Concept2Interval(
             sequenceIndex: value['sequence_index']! as int,
@@ -23,6 +24,19 @@ final class SqliteConcept2Repository implements Concept2Repository {
             restDistanceMeters: value['rest_distance_meters']! as int,
             strokeRate: value['stroke_rate'] as int?,
             calories: value['calories_total'] as int?,
+          ),
+        )
+        .toList();
+    final strokes = (await _dao.listStrokes(resultRowId))
+        .map(
+          (value) => Concept2Stroke(
+            sequenceIndex: value['sequence_index']! as int,
+            timeTenths: value['stroke_time_tenths']! as int,
+            cumulativeWorkTenths: value['cumulative_work_tenths']! as int,
+            distanceDecimeters: value['distance_decimeters']! as int,
+            paceTenths: value['pace_tenths'] as int?,
+            strokeRate: value['stroke_rate'] as int?,
+            heartRate: value['heart_rate'] as int?,
           ),
         )
         .toList();
@@ -47,6 +61,7 @@ final class SqliteConcept2Repository implements Concept2Repository {
         isUtc: true,
       ),
       intervals: intervals,
+      strokes: strokes,
     );
   }
 

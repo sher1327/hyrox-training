@@ -112,7 +112,8 @@ final class HeartRateDao {
            FROM heart_rate_sample
            WHERE import_batch_id = ?''',
         [importBatchId],
-      )).single;
+      ))
+          .single;
       final summary = HeartRateSummary(
         average: (aggregate['avg_heart_rate']! as num).round(),
         maximum: aggregate['max_heart_rate']! as int,

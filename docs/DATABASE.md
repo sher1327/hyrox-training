@@ -1,6 +1,6 @@
-# SQLite database design (v10)
+# SQLite database design (v12)
 
-Database: `hyrox.db`, with foreign keys enabled and schema version `10`.
+Database: `hyrox.db`, with foreign keys enabled and schema version `12`.
 
 ## Relationships
 
@@ -8,6 +8,9 @@ Database: `hyrox.db`, with foreign keys enabled and schema version `10`.
 training_session 1 ─── 1..n station_record
 training_session 1 ─── 0..n heart_rate_import
 heart_rate_import 1 ─── 1..n heart_rate_sample
+training_session 1 ─── 0..1 concept2_result
+concept2_result 1 ─── 0..n concept2_interval
+concept2_result 1 ─── 0..n concept2_stroke
 training_template 1 ─── 1..n template_segment
 training_template 0..1 ─── 0..n training_session
 ```
@@ -28,7 +31,7 @@ training_template 0..1 ─── 0..n training_session
 | total_duration_ms | INTEGER nullable | Frozen report value |
 | avg_heart_rate | INTEGER nullable | Rebuilt after a heart-rate import |
 | max_heart_rate | INTEGER nullable | Rebuilt after a heart-rate import |
-| heart_rate_source | TEXT nullable | `fit` or `intervals_icu` |
+| heart_rate_source | TEXT nullable | `ble`, `fit` or `intervals_icu` |
 | heart_rate_external_id | TEXT nullable | FIT filename or Intervals activity ID |
 | heart_rate_sample_count | INTEGER nullable | Number of full-session samples stored |
 | heart_rate_imported_at_ms | INTEGER nullable | Latest import time |
@@ -155,3 +158,21 @@ active. This makes the migration forward-only and preserves all training data.
   to a dedicated import batch during training.
 - BLE, FIT and Intervals.icu batches remain independent. Exactly one batch is
   selected as the primary source for summaries, segment analysis and replay.
+
+## Version 11 Concept2 workout results
+
+- Single-segment RowErg and SkiErg sessions can store one matched Concept2
+  Logbook result without replacing the App's own elapsed timer.
+- `concept2_result` stores PM5 work/rest time, distance, SPM, drag factor,
+  stroke count and calories.
+- `concept2_interval` stores the PM5 split or interval structure underneath
+  that one App segment.
+
+## Version 12 Concept2 stroke samples
+
+- `concept2_stroke` stores optional Logbook stroke samples including PM work
+  time, distance, pace, SPM and the original PM heart-rate field.
+- Interval-local stroke clocks are normalized to one continuous work timeline
+  for pace and SPM charts.
+- PM heart-rate values remain raw Concept2 metadata and are not promoted to a
+  third primary heart-rate source; BLE and Intervals.icu remain independent.

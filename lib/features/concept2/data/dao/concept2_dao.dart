@@ -21,6 +21,13 @@ final class Concept2Dao {
         orderBy: 'sequence_index ASC',
       );
 
+  Future<List<Map<String, Object?>>> listStrokes(int resultRowId) => db.query(
+        'concept2_stroke',
+        where: 'concept2_result_row_id = ?',
+        whereArgs: [resultRowId],
+        orderBy: 'sequence_index ASC',
+      );
+
   Future<void> saveForSession({
     required int sessionId,
     required Concept2Result result,
@@ -60,6 +67,18 @@ final class Concept2Dao {
             'rest_distance_meters': interval.restDistanceMeters,
             'stroke_rate': interval.strokeRate,
             'calories_total': interval.calories,
+          });
+        }
+        for (final stroke in result.strokes) {
+          batch.insert('concept2_stroke', {
+            'concept2_result_row_id': resultRowId,
+            'sequence_index': stroke.sequenceIndex,
+            'stroke_time_tenths': stroke.timeTenths,
+            'cumulative_work_tenths': stroke.cumulativeWorkTenths,
+            'distance_decimeters': stroke.distanceDecimeters,
+            'pace_tenths': stroke.paceTenths,
+            'stroke_rate': stroke.strokeRate,
+            'heart_rate': stroke.heartRate,
           });
         }
         await batch.commit(noResult: true);

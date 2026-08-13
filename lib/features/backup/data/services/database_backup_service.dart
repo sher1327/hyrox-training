@@ -15,7 +15,7 @@ final class DatabaseBackupService {
   final AppDatabase _appDatabase;
   bool _busy = false;
 
-  static const _requiredTables = {
+  static const _baseRequiredTables = {
     'training_template',
     'template_segment',
     'training_session',
@@ -129,7 +129,15 @@ final class DatabaseBackupService {
         "SELECT name FROM sqlite_master WHERE type = 'table'",
       );
       final tables = tableRows.map((row) => row['name'] as String).toSet();
-      final missing = _requiredTables.difference(tables);
+      final requiredTables = {
+        ..._baseRequiredTables,
+        if (version >= 11) ...{
+          'concept2_result',
+          'concept2_interval',
+        },
+        if (version >= 12) 'concept2_stroke',
+      };
+      final missing = requiredTables.difference(tables);
       if (missing.isNotEmpty) {
         throw DatabaseBackupException('备份缺少必要数据表：${missing.join(', ')}');
       }

@@ -17,8 +17,8 @@ final class ReactiveBleHeartRateSensor implements BleHeartRateSensor {
     FlutterReactiveBle? ble,
     MethodChannel? permissionChannel,
   })  : _ble = ble ?? FlutterReactiveBle(),
-        _permissionChannel = permissionChannel ??
-            const MethodChannel('hyrox/ble_permissions');
+        _permissionChannel =
+            permissionChannel ?? const MethodChannel('hyrox/ble_permissions');
 
   static final Uuid heartRateService =
       Uuid.parse('0000180d-0000-1000-8000-00805f9b34fb');
@@ -45,12 +45,10 @@ final class ReactiveBleHeartRateSensor implements BleHeartRateSensor {
   }
 
   @override
-  Stream<BleHeartRateDevice> scan() => _ble
-      .scanForDevices(
+  Stream<BleHeartRateDevice> scan() => _ble.scanForDevices(
         withServices: [heartRateService],
         scanMode: ScanMode.lowLatency,
-      )
-      .map(
+      ).map(
         (device) => BleHeartRateDevice(
           id: device.id,
           name: device.name,

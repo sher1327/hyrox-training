@@ -1,5 +1,5 @@
 abstract final class DatabaseSchema {
-  static const version = 11;
+  static const version = 12;
 
   static const createTrainingTemplate = '''
 CREATE TABLE training_template (
@@ -182,6 +182,21 @@ CREATE TABLE concept2_interval (
 )
 ''';
 
+  static const createConcept2Stroke = '''
+CREATE TABLE concept2_stroke (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  concept2_result_row_id INTEGER NOT NULL REFERENCES concept2_result(id) ON DELETE CASCADE,
+  sequence_index INTEGER NOT NULL CHECK(sequence_index >= 0),
+  stroke_time_tenths INTEGER NOT NULL CHECK(stroke_time_tenths >= 0),
+  cumulative_work_tenths INTEGER NOT NULL CHECK(cumulative_work_tenths >= 0),
+  distance_decimeters INTEGER NOT NULL CHECK(distance_decimeters >= 0),
+  pace_tenths INTEGER,
+  stroke_rate INTEGER,
+  heart_rate INTEGER,
+  UNIQUE(concept2_result_row_id, sequence_index)
+)
+''';
+
   static const indexes = [
     'CREATE INDEX idx_template_segment_order ON template_segment(template_id, sequence_index)',
     'CREATE INDEX idx_session_started_at ON training_session(started_at_ms DESC)',
@@ -191,6 +206,7 @@ CREATE TABLE concept2_interval (
     'CREATE UNIQUE INDEX idx_active_hr_import ON heart_rate_import(session_id) WHERE is_active = 1',
     'CREATE INDEX idx_concept2_session ON concept2_result(session_id)',
     'CREATE INDEX idx_concept2_interval_order ON concept2_interval(concept2_result_row_id, sequence_index)',
+    'CREATE INDEX idx_concept2_stroke_order ON concept2_stroke(concept2_result_row_id, sequence_index)',
     uniqueActiveSessionIndex,
   ];
 

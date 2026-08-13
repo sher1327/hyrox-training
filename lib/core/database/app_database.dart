@@ -52,6 +52,7 @@ final class AppDatabase {
         await db.execute(DatabaseSchema.createHeartRateSample);
         await db.execute(DatabaseSchema.createConcept2Result);
         await db.execute(DatabaseSchema.createConcept2Interval);
+        await db.execute(DatabaseSchema.createConcept2Stroke);
         await _seedBuiltInTemplates(db);
         await _seedErgTemplates(db);
         for (final statement in DatabaseSchema.indexes) {
@@ -454,6 +455,13 @@ CHECK(feeling IS NULL OR feeling IN
             'ON concept2_interval(concept2_result_row_id, sequence_index)',
           );
           await _seedErgTemplates(db);
+        }
+        if (oldVersion < 12) {
+          await db.execute(DatabaseSchema.createConcept2Stroke);
+          await db.execute(
+            'CREATE INDEX idx_concept2_stroke_order '
+            'ON concept2_stroke(concept2_result_row_id, sequence_index)',
+          );
         }
       },
     );

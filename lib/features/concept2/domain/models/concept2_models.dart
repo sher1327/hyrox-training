@@ -59,6 +59,58 @@ final class Concept2Interval {
       );
 }
 
+final class Concept2Stroke {
+  const Concept2Stroke({
+    required this.sequenceIndex,
+    required this.timeTenths,
+    required this.cumulativeWorkTenths,
+    required this.distanceDecimeters,
+    this.paceTenths,
+    this.strokeRate,
+    this.heartRate,
+  });
+
+  final int sequenceIndex;
+  final int timeTenths;
+  final int cumulativeWorkTenths;
+  final int distanceDecimeters;
+  final int? paceTenths;
+  final int? strokeRate;
+  final int? heartRate;
+
+  Duration get elapsedWork =>
+      Duration(milliseconds: cumulativeWorkTenths * 100);
+  double get distanceMeters => distanceDecimeters / 10;
+
+  static List<Concept2Stroke> listFromJson(List<Object?> values) {
+    final strokes = <Concept2Stroke>[];
+    var previousRawTime = 0;
+    var completedWorkTime = 0;
+    for (var index = 0; index < values.length; index++) {
+      final value = values[index];
+      if (value is! Map) continue;
+      final row = value.cast<String, Object?>();
+      final rawTime = (row['t'] as num?)?.round() ?? 0;
+      if (strokes.isNotEmpty && rawTime < previousRawTime) {
+        completedWorkTime += previousRawTime;
+      }
+      strokes.add(
+        Concept2Stroke(
+          sequenceIndex: strokes.length,
+          timeTenths: rawTime,
+          cumulativeWorkTenths: completedWorkTime + rawTime,
+          distanceDecimeters: (row['d'] as num?)?.round() ?? 0,
+          paceTenths: (row['p'] as num?)?.round(),
+          strokeRate: (row['spm'] as num?)?.round(),
+          heartRate: (row['hr'] as num?)?.round(),
+        ),
+      );
+      previousRawTime = rawTime;
+    }
+    return strokes;
+  }
+}
+
 final class Concept2Result {
   const Concept2Result({
     required this.id,
@@ -68,6 +120,7 @@ final class Concept2Result {
     required this.workTimeTenths,
     required this.workoutType,
     required this.intervals,
+    this.strokes = const [],
     this.restTimeTenths = 0,
     this.strokeRate,
     this.strokeCount,
@@ -91,6 +144,7 @@ final class Concept2Result {
   final String? source;
   final DateTime? importedAt;
   final List<Concept2Interval> intervals;
+  final List<Concept2Stroke> strokes;
 
   Duration get workDuration => Duration(milliseconds: workTimeTenths * 100);
   Duration get restDuration => Duration(milliseconds: restTimeTenths * 100);
@@ -155,6 +209,7 @@ final class Concept2Result {
               fallbackKind,
             ),
       ],
+      strokes: const [],
     );
   }
 
@@ -173,6 +228,25 @@ final class Concept2Result {
         source: source,
         importedAt: value,
         intervals: intervals,
+        strokes: strokes,
+      );
+
+  Concept2Result copyWithStrokes(List<Concept2Stroke> value) => Concept2Result(
+        id: id,
+        machine: machine,
+        endedAt: endedAt,
+        distanceMeters: distanceMeters,
+        workTimeTenths: workTimeTenths,
+        restTimeTenths: restTimeTenths,
+        workoutType: workoutType,
+        strokeRate: strokeRate,
+        strokeCount: strokeCount,
+        dragFactor: dragFactor,
+        calories: calories,
+        source: source,
+        importedAt: importedAt,
+        intervals: intervals,
+        strokes: value,
       );
 }
 
@@ -211,5 +285,22 @@ abstract final class Concept2ResultMatcher {
         (result.totalDuration - localDuration).abs().inMilliseconds;
     return endDifference + durationDifference;
   }
-}
 
+  static bool isHighConfidence({
+    required Concept2Result result,
+    required DateTime sessionStart,
+    required DateTime sessionEnd,
+  }) {
+    final localDuration = sessionEnd.difference(sessionStart);
+    final endDifference = result.endedAt.difference(sessionEnd).abs();
+    final durationDifference = (result.totalDuration - localDuration).abs();
+    final proportionalTolerance = Duration(
+      milliseconds: (localDuration.inMilliseconds * .25).round(),
+    );
+    final durationTolerance = proportionalTolerance > const Duration(minutes: 2)
+        ? proportionalTolerance
+        : const Duration(minutes: 2);
+    return endDifference <= const Duration(minutes: 10) &&
+        durationDifference <= durationTolerance;
+  }
+}
