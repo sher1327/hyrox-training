@@ -15,6 +15,7 @@ import '../../domain/models/training_report.dart';
 import '../controllers/training_providers.dart';
 import '../formatters/training_formatters.dart';
 import '../widgets/station_actual_editor.dart';
+import '../widgets/training_reflection_editor.dart';
 import 'training_segment_breakdown_page.dart';
 
 class TrainingDetailPage extends ConsumerWidget {
@@ -55,6 +56,26 @@ class TrainingDetailPage extends ConsumerWidget {
           ),
           title: const Text('训练报告'),
           actions: [
+            IconButton(
+              tooltip: '心率来源与对比',
+              onPressed: report.valueOrNull == null
+                  ? null
+                  : () => context.push('/training/$sessionId/heart-rate'),
+              icon: const Icon(Icons.show_chart_rounded),
+            ),
+            IconButton(
+              tooltip: '训练感受与备注',
+              onPressed: report.valueOrNull == null ||
+                      report.valueOrNull!.session.status ==
+                          TrainingStatus.inProgress
+                  ? null
+                  : () => _editReflection(
+                        context,
+                        ref,
+                        report.valueOrNull!.session,
+                      ),
+              icon: const Icon(Icons.edit_note_rounded),
+            ),
             if (importing)
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 14),
@@ -136,6 +157,37 @@ class TrainingDetailPage extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _editReflection(
+    BuildContext context,
+    WidgetRef ref,
+    TrainingSession session,
+  ) async {
+    final reflection = await showTrainingReflectionEditor(context, session);
+    if (reflection == null || !context.mounted) return;
+    try {
+      final repository =
+          await ref.read(trainingRepositoryFutureProvider.future);
+      await repository.updateTrainingReflection(
+        sessionId: session.id,
+        reflection: reflection,
+        changedAt: DateTime.now().toUtc(),
+      );
+      ref.invalidate(trainingReportProvider(session.id));
+      ref.invalidate(trainingSessionsProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('训练感受已保存')),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存训练感受失败：$error')),
+        );
+      }
+    }
   }
 
   Future<void> _exportReplay(BuildContext context, WidgetRef ref) async {
@@ -831,14 +883,31 @@ class _ReportBody extends StatelessWidget {
                   : null,
             ),
           ),
-          if (report.session.note?.isNotEmpty ?? false) ...[
+          if (report.session.perceivedEffort != null ||
+              report.session.feeling != null ||
+              (report.session.note?.isNotEmpty ?? false)) ...[
             const SizedBox(height: 24),
-            Text('备注', style: Theme.of(context).textTheme.titleLarge),
+            Text('训练感受', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 10),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Text(report.session.note!),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (report.session.perceivedEffort != null)
+                      Text(
+                        '主观强度：${report.session.perceivedEffort} / 10',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    if (report.session.feeling != null)
+                      Text('整体感受：${report.session.feeling!.label}'),
+                    if (report.session.note?.isNotEmpty ?? false) ...[
+                      const SizedBox(height: 10),
+                      Text(report.session.note!),
+                    ],
+                  ],
+                ),
               ),
             ),
           ],
