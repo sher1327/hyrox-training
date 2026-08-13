@@ -114,7 +114,7 @@ final class HeartRateDao {
         [importBatchId],
       )).single;
       final summary = HeartRateSummary(
-        average: aggregate['avg_heart_rate']! as int,
+        average: (aggregate['avg_heart_rate']! as num).round(),
         maximum: aggregate['max_heart_rate']! as int,
         sampleCount: aggregate['sample_count']! as int,
       );
