@@ -200,7 +200,25 @@ final class _MemoryHeartRateRepository implements HeartRateRepository {
   String? externalActivityId;
 
   @override
+  Future<int> appendLiveSamples({
+    required int sessionId,
+    required String deviceId,
+    required String deviceName,
+    required List<HeartRateSample> samples,
+  }) async {
+    this.samples.addAll(samples);
+    return 1;
+  }
+
+  @override
+  Future<List<HeartRateImportBatch>> listBatches(int sessionId) async => [];
+
+  @override
   Future<List<HeartRateSample>> listSamples(int sessionId) async => samples;
+
+  @override
+  Future<List<HeartRateSample>> listSamplesByBatch(int importBatchId) async =>
+      samples;
 
   @override
   Future<int> replaceSamples({
@@ -215,4 +233,10 @@ final class _MemoryHeartRateRepository implements HeartRateRepository {
     this.externalActivityId = externalActivityId;
     return 1;
   }
+
+  @override
+  Future<void> setActiveBatch({
+    required int sessionId,
+    required int importBatchId,
+  }) async {}
 }
