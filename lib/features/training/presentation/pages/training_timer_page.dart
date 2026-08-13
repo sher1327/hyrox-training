@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../heart_rate/presentation/controllers/live_heart_rate_controller.dart';
+import '../../../heart_rate/presentation/widgets/live_heart_rate_card.dart';
 import '../../domain/models/training_models.dart';
 import '../controllers/training_timer_controller.dart';
 import '../formatters/training_formatters.dart';
@@ -64,6 +66,16 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
               ? const Text('训练中')
               : Text(timer.requireValue.session.title),
           actions: [
+            IconButton(
+              tooltip: '实时心率带',
+              onPressed: timer.valueOrNull == null
+                  ? null
+                  : () => showLiveHeartRateSheet(
+                        context: context,
+                        sessionId: sessionId,
+                      ),
+              icon: const Icon(Icons.favorite_outline_rounded),
+            ),
             IconButton(
               tooltip: '训练队列',
               onPressed: timer.valueOrNull == null ? null : _openTrainingQueue,
@@ -140,7 +152,9 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
                         fontFeatures: const [FontFeature.tabularFigures()],
                       ),
                     ),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 10),
+                    LiveHeartRateCard(sessionId: sessionId),
+                    const SizedBox(height: 16),
                     Card(
                       child: Padding(
                         padding: const EdgeInsets.all(24),
@@ -261,7 +275,7 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
       final done = await ref
           .read(trainingTimerProvider(sessionId).notifier)
           .completeCurrent(startTransition: startTransition);
-      if (done && mounted) _showCompletedReport();
+      if (done && mounted) await _finishHeartRateAndShowReport();
     } catch (error) {
       _showError('完成项目失败：$error');
     }
@@ -282,7 +296,7 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
       final done = await ref
           .read(trainingTimerProvider(sessionId).notifier)
           .finishAfterTransition();
-      if (done && mounted) _showCompletedReport();
+      if (done && mounted) await _finishHeartRateAndShowReport();
     } catch (error) {
       _showError('结束训练失败：$error');
     }
@@ -428,6 +442,9 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
       await ref
           .read(trainingTimerProvider(sessionId).notifier)
           .cancelTraining();
+      await ref
+          .read(liveHeartRateControllerProvider(sessionId).notifier)
+          .stopRecording();
       if (mounted) context.go('/');
     } catch (error) {
       if (!mounted) return;
@@ -464,7 +481,7 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
       final done = await ref
           .read(trainingTimerProvider(sessionId).notifier)
           .skipCurrent(startTransition: startTransition);
-      if (done && mounted) _showCompletedReport();
+      if (done && mounted) await _finishHeartRateAndShowReport();
     } catch (error) {
       _showError('跳过项目失败：$error');
     }
@@ -475,6 +492,13 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  Future<void> _finishHeartRateAndShowReport() async {
+    await ref
+        .read(liveHeartRateControllerProvider(sessionId).notifier)
+        .stopRecording();
+    if (mounted) _showCompletedReport();
   }
 
   void _showCompletedReport() {
