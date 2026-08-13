@@ -613,6 +613,7 @@ class TrainingDetailPage extends ConsumerWidget {
       final result = await action();
       ref.invalidate(trainingReportProvider(sessionId));
       ref.invalidate(heartRateAnalysisProvider(sessionId));
+      ref.invalidate(heartRateSourcesProvider(sessionId));
       ref.invalidate(trainingReplayProvider(sessionId));
       ref.invalidate(trainingSessionsProvider);
       if (!context.mounted) return;
