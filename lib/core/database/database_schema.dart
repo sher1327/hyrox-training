@@ -1,5 +1,5 @@
 abstract final class DatabaseSchema {
-  static const version = 9;
+  static const version = 10;
 
   static const createTrainingTemplate = '''
 CREATE TABLE training_template (
@@ -61,6 +61,14 @@ CREATE TABLE training_session (
   heart_rate_sample_count INTEGER CHECK(heart_rate_sample_count IS NULL OR heart_rate_sample_count >= 0),
   heart_rate_imported_at_ms INTEGER,
   note TEXT,
+  perceived_effort INTEGER CHECK(
+    perceived_effort IS NULL OR perceived_effort BETWEEN 1 AND 10
+  ),
+  feeling TEXT CHECK(
+    feeling IS NULL OR feeling IN (
+      'very_bad', 'bad', 'neutral', 'good', 'very_good'
+    )
+  ),
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL
 )
