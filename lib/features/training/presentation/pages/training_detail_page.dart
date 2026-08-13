@@ -153,6 +153,8 @@ class TrainingDetailPage extends ConsumerWidget {
                       ? () => _undoFinalCompletion(context, ref, value)
                       : null,
                   onEditActual: (station) => _editActual(context, ref, station),
+                  onEditReflection: () =>
+                      _editReflection(context, ref, value.session),
                 ),
         ),
       ),
@@ -724,6 +726,7 @@ class _ReportBody extends StatelessWidget {
     required this.onStationBreakdown,
     required this.onUndoFinalCompletion,
     required this.onEditActual,
+    required this.onEditReflection,
   });
 
   final TrainingReport report;
@@ -737,6 +740,7 @@ class _ReportBody extends StatelessWidget {
   final VoidCallback onStationBreakdown;
   final VoidCallback? onUndoFinalCompletion;
   final ValueChanged<StationRecord> onEditActual;
+  final VoidCallback onEditReflection;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -869,6 +873,18 @@ class _ReportBody extends StatelessWidget {
                   )
                 : const Icon(Icons.download_rounded),
             label: Text(exporting ? '正在生成长图…' : '导出完整回放'),
+          ),
+          const SizedBox(height: 10),
+          FilledButton.tonalIcon(
+            onPressed: onEditReflection,
+            icon: const Icon(Icons.edit_note_rounded),
+            label: Text(
+              report.session.perceivedEffort == null &&
+                      report.session.feeling == null &&
+                      !(report.session.note?.isNotEmpty ?? false)
+                  ? '写下本次训练感受'
+                  : '修改训练感受与备注',
+            ),
           ),
           const SizedBox(height: 24),
           Text('项目明细', style: Theme.of(context).textTheme.titleLarge),
