@@ -691,6 +691,7 @@ class TrainingDetailPage extends ConsumerWidget {
 enum _HeartRateImportChoice { fit, intervalsIcu }
 
 String _heartRateSourceLabel(String? source) => switch (source) {
+      HeartRateSources.ble => '实时心率带',
       HeartRateSources.fit => '本地 FIT',
       HeartRateSources.intervalsIcu => 'Intervals.icu',
       _ => '未知来源',
