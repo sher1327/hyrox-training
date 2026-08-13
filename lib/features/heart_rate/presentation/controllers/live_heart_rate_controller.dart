@@ -143,16 +143,19 @@ final class LiveHeartRateController
               clearMessage: true,
             );
             _subscribe(device);
+            break;
           case DeviceConnectionState.connecting:
             state = state.copyWith(
               status: BleHeartRateConnectionStatus.connecting,
             );
+            break;
           case DeviceConnectionState.disconnecting:
           case DeviceConnectionState.disconnected:
             state = state.copyWith(
               status: BleHeartRateConnectionStatus.disconnected,
               message: '心率带已断开，可重新扫描连接',
             );
+            break;
         }
       },
       onError: (Object error) {
