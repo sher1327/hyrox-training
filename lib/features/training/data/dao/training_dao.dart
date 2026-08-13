@@ -628,6 +628,27 @@ final class TrainingDao {
         );
       });
 
+  Future<void> updateTrainingReflection({
+    required int sessionId,
+    required TrainingReflection reflection,
+    required DateTime changedAt,
+  }) async {
+    final updated = await db.update(
+      'training_session',
+      {
+        'perceived_effort': reflection.perceivedEffort,
+        'feeling': reflection.feeling.databaseValue,
+        'note': reflection.note.isEmpty ? null : reflection.note,
+        'updated_at_ms': changedAt.toUtc().millisecondsSinceEpoch,
+      },
+      where: "id = ? AND status <> 'in_progress'",
+      whereArgs: [sessionId],
+    );
+    if (updated != 1) {
+      throw StateError('训练结束后才能填写训练感受');
+    }
+  }
+
   Future<void> deleteSession(int sessionId) async {
     final deleted = await db.delete(
       'training_session',
