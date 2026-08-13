@@ -1,6 +1,6 @@
-# SQLite database design (v8)
+# SQLite database design (v10)
 
-Database: `hyrox.db`, with foreign keys enabled and schema version `8`.
+Database: `hyrox.db`, with foreign keys enabled and schema version `10`.
 
 ## Relationships
 
@@ -32,7 +32,9 @@ training_template 0..1 ─── 0..n training_session
 | heart_rate_external_id | TEXT nullable | FIT filename or Intervals activity ID |
 | heart_rate_sample_count | INTEGER nullable | Number of full-session samples stored |
 | heart_rate_imported_at_ms | INTEGER nullable | Latest import time |
-| note | TEXT nullable | User note |
+| note | TEXT nullable | Post-workout free-form note |
+| perceived_effort | INTEGER nullable | Athlete RPE from 1–10 |
+| feeling | TEXT nullable | Five-level post-workout feeling |
 | created_at_ms / updated_at_ms | INTEGER | Audit timestamps |
 
 ## `station_record`
@@ -139,3 +141,17 @@ active. This makes the migration forward-only and preserves all training data.
   cooldown flows; transition timing remains attached to the preceding segment.
 - Heart-rate samples belong to an import batch. Re-import switches the active
   batch while retaining prior raw samples.
+
+## Version 9 dynamic training queue
+
+- Session station rows retain their original planned position.
+- Pending rows can be reordered, removed, restored or supplemented with ad-hoc
+  stations without changing reusable templates.
+
+## Version 10 workout reflections and live heart rate
+
+- Completed and cancelled sessions can store RPE, a five-level feeling and note.
+- Standard BLE heart-rate measurements are timestamped on receipt and appended
+  to a dedicated import batch during training.
+- BLE, FIT and Intervals.icu batches remain independent. Exactly one batch is
+  selected as the primary source for summaries, segment analysis and replay.
