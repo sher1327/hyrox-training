@@ -419,6 +419,26 @@ SET planned_sequence_index = sequence_index
 WHERE planned_sequence_index IS NULL AND origin = 'template'
 ''');
         }
+        if (oldVersion < 10) {
+          if (!await _hasColumn(
+            db,
+            'training_session',
+            'perceived_effort',
+          )) {
+            await db.execute(
+              'ALTER TABLE training_session ADD COLUMN perceived_effort '
+              'INTEGER CHECK(perceived_effort IS NULL OR '
+              'perceived_effort BETWEEN 1 AND 10)',
+            );
+          }
+          if (!await _hasColumn(db, 'training_session', 'feeling')) {
+            await db.execute(
+              "ALTER TABLE training_session ADD COLUMN feeling TEXT "
+              "CHECK(feeling IS NULL OR feeling IN "
+              "('very_bad', 'bad', 'neutral', 'good', 'very_good'))",
+            );
+          }
+        }
       },
     );
   }
