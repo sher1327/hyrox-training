@@ -56,6 +56,13 @@ class TrainingDetailPage extends ConsumerWidget {
           ),
           title: const Text('训练报告'),
           actions: [
+            if (_supportsConcept2(report.valueOrNull))
+              IconButton(
+                tooltip: 'Concept2 器械数据',
+                onPressed: () =>
+                    context.push('/training/$sessionId/concept2'),
+                icon: const Icon(Icons.sports_gymnastics_rounded),
+              ),
             IconButton(
               tooltip: '心率来源与对比',
               onPressed: report.valueOrNull == null
@@ -1138,4 +1145,14 @@ class _StationRow extends StatelessWidget {
       ),
     );
   }
+}
+
+bool _supportsConcept2(TrainingReport? report) {
+  if (report == null ||
+      report.session.status == TrainingStatus.inProgress ||
+      report.stations.length != 1) {
+    return false;
+  }
+  final type = report.stations.single.type;
+  return type == StationType.row || type == StationType.skiErg;
 }

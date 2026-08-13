@@ -50,7 +50,10 @@ final class AppDatabase {
         await db.execute(DatabaseSchema.createStationRecord);
         await db.execute(DatabaseSchema.createHeartRateImport);
         await db.execute(DatabaseSchema.createHeartRateSample);
+        await db.execute(DatabaseSchema.createConcept2Result);
+        await db.execute(DatabaseSchema.createConcept2Interval);
         await _seedBuiltInTemplates(db);
+        await _seedErgTemplates(db);
         for (final statement in DatabaseSchema.indexes) {
           await db.execute(statement);
         }
@@ -439,6 +442,19 @@ CHECK(feeling IS NULL OR feeling IN
 ''');
           }
         }
+        if (oldVersion < 11) {
+          await db.execute(DatabaseSchema.createConcept2Result);
+          await db.execute(DatabaseSchema.createConcept2Interval);
+          await db.execute(
+            'CREATE INDEX idx_concept2_session '
+            'ON concept2_result(session_id)',
+          );
+          await db.execute(
+            'CREATE INDEX idx_concept2_interval_order '
+            'ON concept2_interval(concept2_result_row_id, sequence_index)',
+          );
+          await _seedErgTemplates(db);
+        }
       },
     );
   }
@@ -477,6 +493,33 @@ CHECK(feeling IS NULL OR feeling IN
         'updated_at_ms': now,
       });
       await _insertBuiltInSegments(db, templateId, definition);
+    }
+  }
+
+  Future<void> _seedErgTemplates(DatabaseExecutor db) async {
+    final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+    for (final definition in DatabaseSchema.ergTemplates) {
+      final existing = await db.query(
+        'training_template',
+        columns: ['id'],
+        where: 'name = ?',
+        whereArgs: [definition.name],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) continue;
+      final templateId = await db.insert('training_template', {
+        'name': definition.name,
+        'template_type': 'workout',
+        'is_built_in': 1,
+        'created_at_ms': now,
+        'updated_at_ms': now,
+      });
+      await db.insert('template_segment', {
+        'template_id': templateId,
+        'segment_kind': 'station',
+        'station_type': definition.stationType,
+        'sequence_index': 0,
+      });
     }
   }
 

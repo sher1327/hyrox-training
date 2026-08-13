@@ -20,6 +20,7 @@ Android-first, offline Flutter application for recording HYROX training.
 - Live Bluetooth heart-rate belt recording during training
 - Selectable primary heart-rate source and two-source comparison chart
 - Post-workout RPE, feeling and free-form notes
+- Dedicated RowErg/SkiErg workouts with post-workout Concept2 Logbook interval import
 - Full database backup and restore with safety snapshots
 
 ## Run

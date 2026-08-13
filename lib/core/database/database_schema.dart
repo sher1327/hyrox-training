@@ -1,5 +1,5 @@
 abstract final class DatabaseSchema {
-  static const version = 10;
+  static const version = 11;
 
   static const createTrainingTemplate = '''
 CREATE TABLE training_template (
@@ -146,6 +146,42 @@ CREATE TABLE heart_rate_sample (
 )
 ''';
 
+  static const createConcept2Result = '''
+CREATE TABLE concept2_result (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL UNIQUE REFERENCES training_session(id) ON DELETE CASCADE,
+  external_result_id INTEGER NOT NULL,
+  machine_type TEXT NOT NULL CHECK(machine_type IN ('rower', 'skierg')),
+  ended_at_ms INTEGER NOT NULL,
+  distance_meters INTEGER NOT NULL CHECK(distance_meters >= 0),
+  work_time_tenths INTEGER NOT NULL CHECK(work_time_tenths >= 0),
+  rest_time_tenths INTEGER NOT NULL DEFAULT 0 CHECK(rest_time_tenths >= 0),
+  workout_type TEXT NOT NULL,
+  stroke_rate INTEGER,
+  stroke_count INTEGER,
+  drag_factor INTEGER,
+  calories_total INTEGER,
+  source TEXT,
+  imported_at_ms INTEGER NOT NULL
+)
+''';
+
+  static const createConcept2Interval = '''
+CREATE TABLE concept2_interval (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  concept2_result_row_id INTEGER NOT NULL REFERENCES concept2_result(id) ON DELETE CASCADE,
+  sequence_index INTEGER NOT NULL CHECK(sequence_index >= 0),
+  interval_kind TEXT NOT NULL,
+  time_tenths INTEGER NOT NULL CHECK(time_tenths >= 0),
+  rest_time_tenths INTEGER NOT NULL DEFAULT 0 CHECK(rest_time_tenths >= 0),
+  distance_meters INTEGER NOT NULL CHECK(distance_meters >= 0),
+  rest_distance_meters INTEGER NOT NULL DEFAULT 0 CHECK(rest_distance_meters >= 0),
+  stroke_rate INTEGER,
+  calories_total INTEGER,
+  UNIQUE(concept2_result_row_id, sequence_index)
+)
+''';
+
   static const indexes = [
     'CREATE INDEX idx_template_segment_order ON template_segment(template_id, sequence_index)',
     'CREATE INDEX idx_session_started_at ON training_session(started_at_ms DESC)',
@@ -153,6 +189,8 @@ CREATE TABLE heart_rate_sample (
     'CREATE INDEX idx_hr_session_time ON heart_rate_sample(session_id, timestamp_ms)',
     'CREATE INDEX idx_hr_import_session ON heart_rate_import(session_id, imported_at_ms DESC)',
     'CREATE UNIQUE INDEX idx_active_hr_import ON heart_rate_import(session_id) WHERE is_active = 1',
+    'CREATE INDEX idx_concept2_session ON concept2_result(session_id)',
+    'CREATE INDEX idx_concept2_interval_order ON concept2_interval(concept2_result_row_id, sequence_index)',
     uniqueActiveSessionIndex,
   ];
 
@@ -173,6 +211,11 @@ CREATE TABLE heart_rate_sample (
     (type: 'sandbag_lunge', distance: null),
     (type: 'run', distance: 1000),
     (type: 'wall_ball', distance: null),
+  ];
+
+  static const ergTemplates = <ErgTemplateDefinition>[
+    ErgTemplateDefinition(name: '划船训练', stationType: 'row'),
+    ErgTemplateDefinition(name: '滑雪训练', stationType: 'ski_erg'),
   ];
 
   static const builtInTemplates = <BuiltInTemplateDefinition>[
@@ -285,4 +328,14 @@ final class BuiltInSegmentDefinition {
   final int? resistanceLevel;
   final double? weightKg;
   final int? repetitions;
+}
+
+final class ErgTemplateDefinition {
+  const ErgTemplateDefinition({
+    required this.name,
+    required this.stationType,
+  });
+
+  final String name;
+  final String stationType;
 }

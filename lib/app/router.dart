@@ -11,6 +11,7 @@ import '../features/training/presentation/pages/template_editor_page.dart';
 import '../features/replay/presentation/pages/training_replay_page.dart';
 import '../features/backup/presentation/pages/data_management_page.dart';
 import '../features/heart_rate/presentation/pages/heart_rate_sources_page.dart';
+import '../features/concept2/presentation/pages/concept2_sync_page.dart';
 
 final appRouter = GoRouter(
   routes: [
@@ -32,6 +33,12 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/training/:id/heart-rate',
       builder: (_, state) => HeartRateSourcesPage(
+        sessionId: int.parse(state.pathParameters['id']!),
+      ),
+    ),
+    GoRoute(
+      path: '/training/:id/concept2',
+      builder: (_, state) => Concept2SyncPage(
         sessionId: int.parse(state.pathParameters['id']!),
       ),
     ),
