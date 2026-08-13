@@ -197,6 +197,18 @@ final class SqliteTrainingRepository implements TrainingRepository {
       _dao.cancelSession(sessionId, endedAt);
 
   @override
+  Future<void> updateTrainingReflection({
+    required int sessionId,
+    required TrainingReflection reflection,
+    required DateTime changedAt,
+  }) =>
+      _dao.updateTrainingReflection(
+        sessionId: sessionId,
+        reflection: reflection,
+        changedAt: changedAt,
+      );
+
+  @override
   Future<void> deleteSession(int sessionId) => _dao.deleteSession(sessionId);
 }
 
@@ -220,6 +232,8 @@ TrainingSession _sessionFromRow(Map<String, Object?> row) => TrainingSession(
       heartRateSampleCount: row['heart_rate_sample_count'] as int?,
       heartRateImportedAt: _date(row['heart_rate_imported_at_ms']),
       note: row['note'] as String?,
+      perceivedEffort: row['perceived_effort'] as int?,
+      feeling: TrainingFeelingLabel.fromDatabase(row['feeling'] as String?),
       templateId: row['template_id'] as int?,
       templateNameSnapshot: row['template_name_snapshot'] as String?,
     );
