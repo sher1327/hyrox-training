@@ -19,9 +19,11 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
-    plugins.withId("com.android.library") {
-        extensions.configure<com.android.build.api.dsl.LibraryExtension> {
-            compileSdk = 36
+    afterEvaluate {
+        if (plugins.hasPlugin("com.android.library")) {
+            extensions.configure<com.android.build.api.dsl.LibraryExtension> {
+                compileSdk = 36
+            }
         }
     }
 }
