@@ -1,7 +1,10 @@
 package com.example.hyrox_training_tracker
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
@@ -9,19 +12,23 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val backupChannel = "hyrox/data_backup"
+    private val blePermissionChannel = "hyrox/ble_permissions"
     private val createBackupRequest = 4601
-    private var pendingResult: MethodChannel.Result? = null
+    private val blePermissionRequest = 4602
+    private var pendingBackupResult: MethodChannel.Result? = null
     private var pendingSourcePath: String? = null
+    private var pendingBlePermissionResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, backupChannel)
+        val messenger = flutterEngine.dartExecutor.binaryMessenger
+        MethodChannel(messenger, backupChannel)
             .setMethodCallHandler { call, result ->
                 if (call.method != "saveBackup") {
                     result.notImplemented()
                     return@setMethodCallHandler
                 }
-                if (pendingResult != null) {
+                if (pendingBackupResult != null) {
                     result.error("backup_busy", "已有文件保存操作正在进行", null)
                     return@setMethodCallHandler
                 }
@@ -31,7 +38,7 @@ class MainActivity : FlutterActivity() {
                     result.error("backup_missing", "待保存的备份文件不存在", null)
                     return@setMethodCallHandler
                 }
-                pendingResult = result
+                pendingBackupResult = result
                 pendingSourcePath = sourcePath
                 val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE)
@@ -40,6 +47,56 @@ class MainActivity : FlutterActivity() {
                 }
                 startActivityForResult(intent, createBackupRequest)
             }
+
+        MethodChannel(messenger, blePermissionChannel)
+            .setMethodCallHandler { call, result ->
+                if (call.method != "requestPermissions") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                requestBlePermissions(result)
+            }
+    }
+
+    private fun requestBlePermissions(result: MethodChannel.Result) {
+        if (pendingBlePermissionResult != null) {
+            result.error("permission_busy", "蓝牙权限请求正在进行", null)
+            return
+        }
+        val required = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_CONNECT,
+            )
+        } else {
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        val missing = required.filter {
+            checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) {
+            result.success(true)
+            return
+        }
+        pendingBlePermissionResult = result
+        requestPermissions(missing.toTypedArray(), blePermissionRequest)
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        if (requestCode != blePermissionRequest) {
+            super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+            return
+        }
+        val result = pendingBlePermissionResult
+        pendingBlePermissionResult = null
+        result?.success(
+            grantResults.isNotEmpty() &&
+                grantResults.all { it == PackageManager.PERMISSION_GRANTED },
+        )
     }
 
     @Deprecated("Deprecated in Android SDK, required by FlutterActivity result forwarding")
@@ -48,9 +105,9 @@ class MainActivity : FlutterActivity() {
             super.onActivityResult(requestCode, resultCode, data)
             return
         }
-        val result = pendingResult
+        val result = pendingBackupResult
         val sourcePath = pendingSourcePath
-        pendingResult = null
+        pendingBackupResult = null
         pendingSourcePath = null
         if (resultCode != Activity.RESULT_OK || data?.data == null) {
             result?.success(false)
