@@ -44,6 +44,7 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
   @override
   Widget build(BuildContext context) {
     final timer = ref.watch(trainingTimerProvider(sessionId));
+    ref.watch(liveHeartRateControllerProvider(sessionId));
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
