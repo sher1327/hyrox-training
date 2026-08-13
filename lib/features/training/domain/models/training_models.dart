@@ -2,6 +2,47 @@ enum TrainingMode { single, double, relay }
 
 enum TrainingStatus { draft, inProgress, completed, cancelled }
 
+enum TrainingFeeling { veryBad, bad, neutral, good, veryGood }
+
+extension TrainingFeelingLabel on TrainingFeeling {
+  String get label => switch (this) {
+        TrainingFeeling.veryBad => '很差',
+        TrainingFeeling.bad => '较差',
+        TrainingFeeling.neutral => '一般',
+        TrainingFeeling.good => '不错',
+        TrainingFeeling.veryGood => '很好',
+      };
+
+  String get databaseValue => switch (this) {
+        TrainingFeeling.veryBad => 'very_bad',
+        TrainingFeeling.bad => 'bad',
+        TrainingFeeling.neutral => 'neutral',
+        TrainingFeeling.good => 'good',
+        TrainingFeeling.veryGood => 'very_good',
+      };
+
+  static TrainingFeeling? fromDatabase(String? value) => switch (value) {
+        'very_bad' => TrainingFeeling.veryBad,
+        'bad' => TrainingFeeling.bad,
+        'neutral' => TrainingFeeling.neutral,
+        'good' => TrainingFeeling.good,
+        'very_good' => TrainingFeeling.veryGood,
+        _ => null,
+      };
+}
+
+final class TrainingReflection {
+  const TrainingReflection({
+    required this.perceivedEffort,
+    required this.feeling,
+    required this.note,
+  });
+
+  final int perceivedEffort;
+  final TrainingFeeling feeling;
+  final String note;
+}
+
 enum SegmentStatus { pending, active, completed, skipped }
 
 enum StationRecordOrigin { template, adHoc }
@@ -55,6 +96,8 @@ final class TrainingSession {
     this.heartRateSampleCount,
     this.heartRateImportedAt,
     this.note,
+    this.perceivedEffort,
+    this.feeling,
     this.templateId,
     this.templateNameSnapshot,
   });
@@ -76,6 +119,8 @@ final class TrainingSession {
   final int? heartRateSampleCount;
   final DateTime? heartRateImportedAt;
   final String? note;
+  final int? perceivedEffort;
+  final TrainingFeeling? feeling;
   final int? templateId;
   final String? templateNameSnapshot;
 
