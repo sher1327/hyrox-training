@@ -59,6 +59,10 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun requestBlePermissions(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            result.success(true)
+            return
+        }
         if (pendingBlePermissionResult != null) {
             result.error("permission_busy", "蓝牙权限请求正在进行", null)
             return
