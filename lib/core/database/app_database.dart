@@ -432,11 +432,11 @@ WHERE planned_sequence_index IS NULL AND origin = 'template'
             );
           }
           if (!await _hasColumn(db, 'training_session', 'feeling')) {
-            await db.execute(
-              "ALTER TABLE training_session ADD COLUMN feeling TEXT "
-              "CHECK(feeling IS NULL OR feeling IN "
-              "('very_bad', 'bad', 'neutral', 'good', 'very_good'))",
-            );
+            await db.execute('''
+ALTER TABLE training_session ADD COLUMN feeling TEXT
+CHECK(feeling IS NULL OR feeling IN
+  ('very_bad', 'bad', 'neutral', 'good', 'very_good'))
+''');
           }
         }
       },
