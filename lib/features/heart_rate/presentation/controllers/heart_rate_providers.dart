@@ -55,5 +55,19 @@ final heartRateAnalysisProvider = FutureProvider.autoDispose
   );
 });
 
+final heartRateSourcesProvider = FutureProvider.autoDispose
+    .family<List<HeartRateSourceData>, int>((ref, sessionId) async {
+  final repository = await ref.watch(heartRateRepositoryFutureProvider.future);
+  final batches = await repository.listBatches(sessionId);
+  return Future.wait(
+    batches.map(
+      (batch) async => HeartRateSourceData(
+        batch: batch,
+        samples: await repository.listSamplesByBatch(batch.id),
+      ),
+    ),
+  );
+});
+
 final heartRateImportingProvider =
     StateProvider.autoDispose.family<bool, int>((ref, sessionId) => false);

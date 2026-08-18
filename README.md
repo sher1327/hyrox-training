@@ -5,7 +5,7 @@ Android-first, offline Flutter application for recording HYROX training.
 ## Current implementation
 
 - Project structure and architecture decisions
-- SQLite v8 schema with non-destructive migrations
+- SQLite v10 schema with non-destructive migrations
 - Page and navigation design
 - Riverpod-driven HYROX timer state machine
 - Repository interfaces and SQLite implementations
@@ -17,6 +17,11 @@ Android-first, offline Flutter application for recording HYROX training.
 - Built-in race specifications and reusable custom training templates
 - Planned versus actual station performance with post-workout editing
 - FIT file and Intervals.icu heart-rate import with full timestamped samples
+- Live Bluetooth heart-rate belt recording during training
+- Selectable primary heart-rate source and two-source comparison chart
+- Post-workout RPE, feeling and free-form notes
+- Dedicated RowErg/SkiErg workouts with post-workout Concept2 Logbook interval import
+- Full database backup and restore with safety snapshots
 
 ## Run
 

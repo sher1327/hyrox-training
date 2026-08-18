@@ -53,6 +53,9 @@ Back navigation requires a future confirmation dialog because the active state i
 - All 16 segment times and assigned athlete
 - Notes
 - Heart-rate import offers local FIT or Intervals.icu online pull
+- Live training can connect a standard BLE heart-rate belt and persist samples
+- Heart-rate sources can be switched without deleting previous samples
+- A comparison page overlays up to two source curves
 - Intervals.icu credentials are configured once and encrypted on-device
 - Online activities are matched by time-range overlap; a single match imports
   directly, while multiple matches are presented for explicit selection
@@ -60,6 +63,7 @@ Back navigation requires a future confirmation dialog because the active state i
 - Imported timestamped samples remain in SQLite for future analysis
 - Planned and actual specifications are shown per completed segment
 - Actual values can be corrected after the workout from the report
+- RPE, overall feeling and a free-form note can be recorded after every workout
 
 ## 6. Summary
 

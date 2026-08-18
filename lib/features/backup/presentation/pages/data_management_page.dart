@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../concept2/presentation/controllers/concept2_providers.dart';
 import '../../../heart_rate/presentation/controllers/heart_rate_providers.dart';
+import '../../../replay/presentation/controllers/training_replay_providers.dart';
 import '../../../training/presentation/controllers/training_providers.dart';
 import '../../../training/presentation/controllers/training_timer_controller.dart';
 import '../../domain/models/database_backup.dart';
@@ -144,16 +146,16 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
           const SizedBox(height: 22),
           const _InformationCard(
             icon: Icons.favorite_outline_rounded,
-            title: '包含完整心率数据',
-            text: '备份包含全程心率采样、Intervals.icu 活动匹配信息和分段记录。'
-                '恢复后，各分段平均和最大心率会自动重新计算。',
+            title: '包含完整训练与器械数据',
+            text: '备份包含全程心率、Intervals.icu 匹配信息、训练感受，'
+                '以及 Concept2 总成绩、间歇和逐桨数据。',
           ),
           const SizedBox(height: 10),
           const _InformationCard(
             icon: Icons.key_off_outlined,
-            title: 'API 密钥不会导出',
-            text: 'Intervals.icu API 密钥保存在 Android 安全存储中，不会写入备份文件。'
-                '换手机恢复后需要重新配置一次。',
+            title: '授权密钥不会导出',
+            text: 'Intervals.icu API 密钥和 Concept2 Token 保存在 Android '
+                '安全存储中，换手机恢复后需要重新配置。',
           ),
           const SizedBox(height: 10),
           const _InformationCard(
@@ -323,6 +325,10 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
     ref.invalidate(heartRateRepositoryFutureProvider);
     ref.invalidate(heartRateImportServiceFutureProvider);
     ref.invalidate(heartRateAnalysisProvider);
+    ref.invalidate(heartRateSourcesProvider);
+    ref.invalidate(trainingReplayProvider);
+    ref.invalidate(concept2RepositoryFutureProvider);
+    ref.invalidate(concept2ResultProvider);
     ref.invalidate(currentDatabaseSummaryProvider);
     ref.invalidate(internalBackupSummariesProvider);
   }

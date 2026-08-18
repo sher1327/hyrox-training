@@ -79,5 +79,10 @@ abstract interface class TrainingRepository {
   });
   Future<void> completeSession(int sessionId, DateTime endedAt);
   Future<void> cancelSession(int sessionId, DateTime endedAt);
+  Future<void> updateTrainingReflection({
+    required int sessionId,
+    required TrainingReflection reflection,
+    required DateTime changedAt,
+  });
   Future<void> deleteSession(int sessionId);
 }

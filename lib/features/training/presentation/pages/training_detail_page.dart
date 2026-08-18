@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../concept2/domain/models/concept2_models.dart';
+import '../../../concept2/presentation/controllers/concept2_providers.dart';
 import '../../../heart_rate/data/services/intervals_icu_client.dart';
 import '../../../backup/presentation/controllers/database_backup_providers.dart';
 import '../../../heart_rate/domain/models/heart_rate_models.dart';
@@ -15,6 +17,7 @@ import '../../domain/models/training_report.dart';
 import '../controllers/training_providers.dart';
 import '../formatters/training_formatters.dart';
 import '../widgets/station_actual_editor.dart';
+import '../widgets/training_reflection_editor.dart';
 import 'training_segment_breakdown_page.dart';
 
 class TrainingDetailPage extends ConsumerWidget {
@@ -33,6 +36,10 @@ class TrainingDetailPage extends ConsumerWidget {
     final heartRate = ref.watch(heartRateAnalysisProvider(sessionId));
     final importing = ref.watch(heartRateImportingProvider(sessionId));
     final exporting = ref.watch(trainingReplayExportingProvider(sessionId));
+    final supportsConcept2 = _supportsConcept2(report.valueOrNull);
+    final concept2 = supportsConcept2
+        ? ref.watch(concept2ResultProvider(sessionId))
+        : const AsyncValue<Concept2Result?>.data(null);
     return PopScope(
       canPop: !returnHomeOnBack,
       onPopInvokedWithResult: (didPop, _) {
@@ -55,6 +62,32 @@ class TrainingDetailPage extends ConsumerWidget {
           ),
           title: const Text('训练报告'),
           actions: [
+            if (_supportsConcept2(report.valueOrNull))
+              IconButton(
+                tooltip: 'Concept2 器械数据',
+                onPressed: () => context.push('/training/$sessionId/concept2'),
+                icon: const Icon(Icons.sports_gymnastics_rounded),
+              ),
+            IconButton(
+              tooltip: '心率来源与对比',
+              onPressed: report.valueOrNull == null
+                  ? null
+                  : () => context.push('/training/$sessionId/heart-rate'),
+              icon: const Icon(Icons.show_chart_rounded),
+            ),
+            IconButton(
+              tooltip: '训练感受与备注',
+              onPressed: report.valueOrNull == null ||
+                      report.valueOrNull!.session.status ==
+                          TrainingStatus.inProgress
+                  ? null
+                  : () => _editReflection(
+                        context,
+                        ref,
+                        report.valueOrNull!.session,
+                      ),
+              icon: const Icon(Icons.edit_note_rounded),
+            ),
             if (importing)
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 14),
@@ -115,6 +148,7 @@ class TrainingDetailPage extends ConsumerWidget {
                   heartRate: heartRate,
                   importing: importing,
                   exporting: exporting,
+                  concept2: concept2,
                   onImportHeartRate: () =>
                       _showHeartRateImportOptions(context, ref, value.session),
                   onReplay: () => context.push('/training/$sessionId/replay'),
@@ -127,15 +161,51 @@ class TrainingDetailPage extends ConsumerWidget {
                     '/training/$sessionId/breakdown/'
                     '${TrainingBreakdownKind.station.routeName}',
                   ),
+                  onConcept2: supportsConcept2
+                      ? () => context.push('/training/$sessionId/concept2')
+                      : null,
                   onUndoFinalCompletion: returnHomeOnBack &&
                           value.session.status == TrainingStatus.completed
                       ? () => _undoFinalCompletion(context, ref, value)
                       : null,
                   onEditActual: (station) => _editActual(context, ref, station),
+                  onEditReflection: () =>
+                      _editReflection(context, ref, value.session),
                 ),
         ),
       ),
     );
+  }
+
+  Future<void> _editReflection(
+    BuildContext context,
+    WidgetRef ref,
+    TrainingSession session,
+  ) async {
+    final reflection = await showTrainingReflectionEditor(context, session);
+    if (reflection == null || !context.mounted) return;
+    try {
+      final repository =
+          await ref.read(trainingRepositoryFutureProvider.future);
+      await repository.updateTrainingReflection(
+        sessionId: session.id,
+        reflection: reflection,
+        changedAt: DateTime.now().toUtc(),
+      );
+      ref.invalidate(trainingReportProvider(session.id));
+      ref.invalidate(trainingSessionsProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('训练感受已保存')),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存训练感受失败：$error')),
+        );
+      }
+    }
   }
 
   Future<void> _exportReplay(BuildContext context, WidgetRef ref) async {
@@ -559,6 +629,7 @@ class TrainingDetailPage extends ConsumerWidget {
       final result = await action();
       ref.invalidate(trainingReportProvider(sessionId));
       ref.invalidate(heartRateAnalysisProvider(sessionId));
+      ref.invalidate(heartRateSourcesProvider(sessionId));
       ref.invalidate(trainingReplayProvider(sessionId));
       ref.invalidate(trainingSessionsProvider);
       if (!context.mounted) return;
@@ -637,6 +708,7 @@ class TrainingDetailPage extends ConsumerWidget {
 enum _HeartRateImportChoice { fit, intervalsIcu }
 
 String _heartRateSourceLabel(String? source) => switch (source) {
+      HeartRateSources.ble => '实时心率带',
       HeartRateSources.fit => '本地 FIT',
       HeartRateSources.intervalsIcu => 'Intervals.icu',
       _ => '未知来源',
@@ -665,26 +737,32 @@ class _ReportBody extends StatelessWidget {
     required this.heartRate,
     required this.importing,
     required this.exporting,
+    required this.concept2,
     required this.onImportHeartRate,
     required this.onReplay,
     required this.onExportReplay,
     required this.onRunningBreakdown,
     required this.onStationBreakdown,
+    required this.onConcept2,
     required this.onUndoFinalCompletion,
     required this.onEditActual,
+    required this.onEditReflection,
   });
 
   final TrainingReport report;
   final AsyncValue<HeartRateAnalysis> heartRate;
   final bool importing;
   final bool exporting;
+  final AsyncValue<Concept2Result?> concept2;
   final VoidCallback onImportHeartRate;
   final VoidCallback onReplay;
   final VoidCallback onExportReplay;
   final VoidCallback onRunningBreakdown;
   final VoidCallback onStationBreakdown;
+  final VoidCallback? onConcept2;
   final VoidCallback? onUndoFinalCompletion;
   final ValueChanged<StationRecord> onEditActual;
+  final VoidCallback onEditReflection;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -795,6 +873,24 @@ class _ReportBody extends StatelessWidget {
               report.session.avgHeartRate == null ? '导入心率' : '重新导入心率',
             ),
           ),
+          if (onConcept2 != null) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: onConcept2,
+              icon: const Icon(Icons.sports_gymnastics_rounded),
+              label: Text(
+                concept2.when(
+                  loading: () => '正在读取 Concept2 同步状态…',
+                  error: (_, __) => 'Concept2 状态读取失败，点击重试',
+                  data: (value) => value == null
+                      ? 'Concept2 PM5 · 待同步'
+                      : 'Concept2 PM5 · 已同步 '
+                          '${value.intervals.length} 个分段 · '
+                          '${value.strokes.length} 条逐桨',
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
           FilledButton.icon(
             onPressed: (report.session.heartRateSampleCount ?? 0) > 0
@@ -818,6 +914,18 @@ class _ReportBody extends StatelessWidget {
                 : const Icon(Icons.download_rounded),
             label: Text(exporting ? '正在生成长图…' : '导出完整回放'),
           ),
+          const SizedBox(height: 10),
+          FilledButton.tonalIcon(
+            onPressed: onEditReflection,
+            icon: const Icon(Icons.edit_note_rounded),
+            label: Text(
+              report.session.perceivedEffort == null &&
+                      report.session.feeling == null &&
+                      !(report.session.note?.isNotEmpty ?? false)
+                  ? '写下本次训练感受'
+                  : '修改训练感受与备注',
+            ),
+          ),
           const SizedBox(height: 24),
           Text('项目明细', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 10),
@@ -831,14 +939,31 @@ class _ReportBody extends StatelessWidget {
                   : null,
             ),
           ),
-          if (report.session.note?.isNotEmpty ?? false) ...[
+          if (report.session.perceivedEffort != null ||
+              report.session.feeling != null ||
+              (report.session.note?.isNotEmpty ?? false)) ...[
             const SizedBox(height: 24),
-            Text('备注', style: Theme.of(context).textTheme.titleLarge),
+            Text('训练感受', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 10),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Text(report.session.note!),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (report.session.perceivedEffort != null)
+                      Text(
+                        '主观强度：${report.session.perceivedEffort} / 10',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    if (report.session.feeling != null)
+                      Text('整体感受：${report.session.feeling!.label}'),
+                    if (report.session.note?.isNotEmpty ?? false) ...[
+                      const SizedBox(height: 10),
+                      Text(report.session.note!),
+                    ],
+                  ],
+                ),
               ),
             ),
           ],
@@ -1051,4 +1176,14 @@ class _StationRow extends StatelessWidget {
       ),
     );
   }
+}
+
+bool _supportsConcept2(TrainingReport? report) {
+  if (report == null ||
+      report.session.status == TrainingStatus.inProgress ||
+      report.stations.length != 1) {
+    return false;
+  }
+  final type = report.stations.single.type;
+  return type == StationType.row || type == StationType.skiErg;
 }

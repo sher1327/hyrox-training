@@ -50,7 +50,11 @@ final class AppDatabase {
         await db.execute(DatabaseSchema.createStationRecord);
         await db.execute(DatabaseSchema.createHeartRateImport);
         await db.execute(DatabaseSchema.createHeartRateSample);
+        await db.execute(DatabaseSchema.createConcept2Result);
+        await db.execute(DatabaseSchema.createConcept2Interval);
+        await db.execute(DatabaseSchema.createConcept2Stroke);
         await _seedBuiltInTemplates(db);
+        await _seedErgTemplates(db);
         for (final statement in DatabaseSchema.indexes) {
           await db.execute(statement);
         }
@@ -419,6 +423,46 @@ SET planned_sequence_index = sequence_index
 WHERE planned_sequence_index IS NULL AND origin = 'template'
 ''');
         }
+        if (oldVersion < 10) {
+          if (!await _hasColumn(
+            db,
+            'training_session',
+            'perceived_effort',
+          )) {
+            await db.execute(
+              'ALTER TABLE training_session ADD COLUMN perceived_effort '
+              'INTEGER CHECK(perceived_effort IS NULL OR '
+              'perceived_effort BETWEEN 1 AND 10)',
+            );
+          }
+          if (!await _hasColumn(db, 'training_session', 'feeling')) {
+            await db.execute('''
+ALTER TABLE training_session ADD COLUMN feeling TEXT
+CHECK(feeling IS NULL OR feeling IN
+  ('very_bad', 'bad', 'neutral', 'good', 'very_good'))
+''');
+          }
+        }
+        if (oldVersion < 11) {
+          await db.execute(DatabaseSchema.createConcept2Result);
+          await db.execute(DatabaseSchema.createConcept2Interval);
+          await db.execute(
+            'CREATE INDEX idx_concept2_session '
+            'ON concept2_result(session_id)',
+          );
+          await db.execute(
+            'CREATE INDEX idx_concept2_interval_order '
+            'ON concept2_interval(concept2_result_row_id, sequence_index)',
+          );
+          await _seedErgTemplates(db);
+        }
+        if (oldVersion < 12) {
+          await db.execute(DatabaseSchema.createConcept2Stroke);
+          await db.execute(
+            'CREATE INDEX idx_concept2_stroke_order '
+            'ON concept2_stroke(concept2_result_row_id, sequence_index)',
+          );
+        }
       },
     );
   }
@@ -457,6 +501,33 @@ WHERE planned_sequence_index IS NULL AND origin = 'template'
         'updated_at_ms': now,
       });
       await _insertBuiltInSegments(db, templateId, definition);
+    }
+  }
+
+  Future<void> _seedErgTemplates(DatabaseExecutor db) async {
+    final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+    for (final definition in DatabaseSchema.ergTemplates) {
+      final existing = await db.query(
+        'training_template',
+        columns: ['id'],
+        where: 'name = ?',
+        whereArgs: [definition.name],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) continue;
+      final templateId = await db.insert('training_template', {
+        'name': definition.name,
+        'template_type': 'workout',
+        'is_built_in': 1,
+        'created_at_ms': now,
+        'updated_at_ms': now,
+      });
+      await db.insert('template_segment', {
+        'template_id': templateId,
+        'segment_kind': 'station',
+        'station_type': definition.stationType,
+        'sequence_index': 0,
+      });
     }
   }
 
