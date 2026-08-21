@@ -14,6 +14,17 @@ abstract interface class TrainingRepository {
   Future<TrainingSession?> getActiveSession();
   Future<List<TrainingSession>> listSessions();
   Future<List<StationRecord>> listStations(int sessionId);
+  Future<List<RunningLap>> listRunningLaps(int sessionId);
+
+  Future<int> recordRunningLap({
+    required int sessionId,
+    required int stationId,
+    required DateTime endedAt,
+  });
+  Future<void> updateRunningLapDistance({
+    required int lapId,
+    required int? distanceMeters,
+  });
 
   Future<void> completeStation({
     required int stationId,

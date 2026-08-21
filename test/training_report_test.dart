@@ -44,6 +44,82 @@ void main() {
         isTrue);
   });
 
+  test('built-in single-station templates include running', () {
+    expect(
+      DatabaseSchema.singleStationTemplates.map((item) => item.name),
+      containsAll(['跑步训练', '划船训练', '滑雪训练']),
+    );
+  });
+
+  test('running lap calculates pace only when distance is available', () {
+    final start = DateTime.utc(2026, 8, 21, 8);
+    final lap = RunningLap(
+      id: 1,
+      sessionId: 1,
+      stationRecordId: 1,
+      sequenceIndex: 0,
+      startedAt: start,
+      endedAt: start.add(const Duration(minutes: 2)),
+      duration: const Duration(minutes: 2),
+      distanceMeters: 400,
+      captureType: RunningLapCaptureType.manual,
+    );
+    final withoutDistance = RunningLap(
+      id: 2,
+      sessionId: 1,
+      stationRecordId: 1,
+      sequenceIndex: 1,
+      startedAt: start.add(const Duration(minutes: 2)),
+      endedAt: start.add(const Duration(minutes: 4)),
+      duration: const Duration(minutes: 2),
+      captureType: RunningLapCaptureType.finish,
+    );
+
+    expect(lap.pacePerKilometer, const Duration(minutes: 5));
+    expect(withoutDistance.pacePerKilometer, isNull);
+  });
+
+  test('timer derives current lap time from the last manual boundary', () {
+    final start = DateTime.utc(2026, 8, 21, 8);
+    final boundary = start.add(const Duration(minutes: 3));
+    final state = TrainingTimerState(
+      session: TrainingSession(
+        id: 20,
+        mode: TrainingMode.single,
+        title: '跑步训练',
+        status: TrainingStatus.inProgress,
+        startedAt: start,
+      ),
+      stations: [
+        StationRecord(
+          id: 201,
+          sessionId: 20,
+          type: StationType.run,
+          runNumber: 1,
+          sequenceIndex: 0,
+          status: SegmentStatus.active,
+          startedAt: start,
+        ),
+      ],
+      runningLaps: [
+        RunningLap(
+          id: 2001,
+          sessionId: 20,
+          stationRecordId: 201,
+          sequenceIndex: 0,
+          startedAt: start,
+          endedAt: boundary,
+          duration: const Duration(minutes: 3),
+          captureType: RunningLapCaptureType.manual,
+        ),
+      ],
+      now: boundary.add(const Duration(minutes: 2, seconds: 10)),
+    );
+
+    expect(state.currentRunningLaps, hasLength(1));
+    expect(state.currentLapElapsed, const Duration(minutes: 2, seconds: 10));
+  });
+
   test('optional station specifications produce a readable label', () {
     const segment = TemplateSegmentInput(
       type: StationType.farmerCarry,

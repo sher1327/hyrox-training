@@ -136,6 +136,7 @@ final class DatabaseBackupService {
           'concept2_interval',
         },
         if (version >= 12) 'concept2_stroke',
+        if (version >= 13) 'running_lap',
       };
       final missing = requiredTables.difference(tables);
       if (missing.isNotEmpty) {

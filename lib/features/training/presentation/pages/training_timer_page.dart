@@ -9,6 +9,7 @@ import '../controllers/training_timer_controller.dart';
 import '../formatters/training_formatters.dart';
 import '../widgets/station_actual_editor.dart';
 import '../widgets/training_queue_sheet.dart';
+import '../widgets/running_lap_distance_editor.dart';
 
 class TrainingTimerPage extends ConsumerStatefulWidget {
   const TrainingTimerPage({required this.sessionId, super.key});
@@ -191,6 +192,15 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
                                 ],
                               ),
                             ),
+                            if (current.type == StationType.run) ...[
+                              const SizedBox(height: 10),
+                              Text(
+                                '当前分段 '
+                                '${formatDuration(value.currentLapElapsed, includeHours: false)}'
+                                ' · 已记录 ${value.currentRunningLaps.length} 段',
+                                style: const TextStyle(color: Colors.white54),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -250,6 +260,14 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
                       ),
                       const SizedBox(height: 4),
                     ],
+                    if (current.type == StationType.run) ...[
+                      OutlinedButton.icon(
+                        onPressed: value.isSaving ? null : _recordRunningLap,
+                        icon: const Icon(Icons.flag_rounded),
+                        label: const Text('记录跑步分段'),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
                     FilledButton(
                       onPressed:
                           value.isSaving ? null : () => _completeCurrent(value),
@@ -279,6 +297,31 @@ class _TrainingTimerPageState extends ConsumerState<TrainingTimerPage> {
       if (done && mounted) await _finishHeartRateAndShowReport();
     } catch (error) {
       _showError('完成项目失败：$error');
+    }
+  }
+
+  Future<void> _recordRunningLap() async {
+    try {
+      final lap = await ref
+          .read(trainingTimerProvider(sessionId).notifier)
+          .recordRunningLap();
+      if (lap == null || !mounted) return;
+      final edit = await showRunningLapDistanceEditor(
+        context,
+        lapNumber: lap.sequenceIndex + 1,
+      );
+      if (!mounted) return;
+      if (edit == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('第 ${lap.sequenceIndex + 1} 段已记录')),
+        );
+        return;
+      }
+      await ref
+          .read(trainingTimerProvider(sessionId).notifier)
+          .updateRunningLapDistance(lap.id, edit.distanceMeters);
+    } catch (error) {
+      _showError('记录跑步分段失败：$error');
     }
   }
 

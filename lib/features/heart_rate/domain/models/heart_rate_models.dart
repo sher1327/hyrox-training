@@ -103,16 +103,17 @@ final class HeartRateAnalysis {
     required this.full,
     required this.byStationId,
     required this.samples,
+    this.byRunningLapId = const {},
   });
 
   final HeartRateSummary? full;
   final Map<int, HeartRateSummary> byStationId;
   final List<HeartRateSample> samples;
+  final Map<int, HeartRateSummary> byRunningLapId;
 
   factory HeartRateAnalysis.build(
-    List<HeartRateSample> samples,
-    List<StationRecord> stations,
-  ) {
+      List<HeartRateSample> samples, List<StationRecord> stations,
+      [List<RunningLap> runningLaps = const []]) {
     final ordered = [...samples]
       ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
     final summaries = <int, HeartRateSummary>{};
@@ -129,10 +130,22 @@ final class HeartRateAnalysis {
       );
       if (summary != null) summaries[station.id] = summary;
     }
+    final lapSummaries = <int, HeartRateSummary>{};
+    for (final lap in runningLaps) {
+      final summary = HeartRateSummary.fromSamples(
+        ordered.where(
+          (sample) =>
+              !sample.timestamp.isBefore(lap.startedAt) &&
+              sample.timestamp.isBefore(lap.endedAt),
+        ),
+      );
+      if (summary != null) lapSummaries[lap.id] = summary;
+    }
     return HeartRateAnalysis(
       full: HeartRateSummary.fromSamples(ordered),
       byStationId: summaries,
       samples: ordered,
+      byRunningLapId: lapSummaries,
     );
   }
 }

@@ -27,22 +27,47 @@ void main() {
         bpm: 150,
       ),
     ];
-    final analysis = HeartRateAnalysis.build(samples, [
-      StationRecord(
-        id: 7,
+    final station = StationRecord(
+      id: 7,
+      sessionId: 1,
+      type: StationType.run,
+      sequenceIndex: 0,
+      status: SegmentStatus.completed,
+      startedAt: start,
+      endedAt: start.add(const Duration(seconds: 10)),
+    );
+    final laps = [
+      RunningLap(
+        id: 71,
         sessionId: 1,
-        type: StationType.run,
+        stationRecordId: 7,
         sequenceIndex: 0,
-        status: SegmentStatus.completed,
         startedAt: start,
         endedAt: start.add(const Duration(seconds: 10)),
+        duration: const Duration(seconds: 10),
+        captureType: RunningLapCaptureType.manual,
       ),
-    ]);
+      RunningLap(
+        id: 72,
+        sessionId: 1,
+        stationRecordId: 7,
+        sequenceIndex: 1,
+        startedAt: start.add(const Duration(seconds: 10)),
+        endedAt: start.add(const Duration(seconds: 15)),
+        duration: const Duration(seconds: 5),
+        captureType: RunningLapCaptureType.finish,
+      ),
+    ];
+    final analysis = HeartRateAnalysis.build(samples, [station], laps);
 
     expect(analysis.full?.average, 123);
     expect(analysis.full?.maximum, 150);
     expect(analysis.byStationId[7]?.average, 110);
     expect(analysis.byStationId[7]?.maximum, 120);
+    expect(analysis.byRunningLapId[71]?.average, 110);
+    expect(analysis.byRunningLapId[71]?.maximum, 120);
+    expect(analysis.byRunningLapId[72]?.average, 150);
+    expect(analysis.byRunningLapId[72]?.maximum, 150);
   });
 
   test('matcher returns every heart-rate activity overlapping the session', () {

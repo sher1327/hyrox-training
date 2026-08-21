@@ -9,12 +9,12 @@ final class TrainingReport {
     required this.stationDuration,
     required this.transitionDuration,
     required this.completedSegments,
+    this.runningLaps = const [],
   });
 
   factory TrainingReport.build(
-    TrainingSession session,
-    List<StationRecord> stations,
-  ) {
+      TrainingSession session, List<StationRecord> stations,
+      [List<RunningLap> runningLaps = const []]) {
     final running = _sum(
       stations.where((station) => station.type == StationType.run),
     );
@@ -46,6 +46,7 @@ final class TrainingReport {
       completedSegments: stations
           .where((station) => station.status == SegmentStatus.completed)
           .length,
+      runningLaps: List.unmodifiable(runningLaps),
     );
   }
 
@@ -56,6 +57,7 @@ final class TrainingReport {
   final Duration stationDuration;
   final Duration transitionDuration;
   final int completedSegments;
+  final List<RunningLap> runningLaps;
 
   List<StationRecord> get slowestFunctionalStations {
     final result = stations

@@ -18,6 +18,7 @@ import '../controllers/training_providers.dart';
 import '../formatters/training_formatters.dart';
 import '../widgets/station_actual_editor.dart';
 import '../widgets/training_reflection_editor.dart';
+import '../widgets/running_lap_distance_editor.dart';
 import 'training_segment_breakdown_page.dart';
 
 class TrainingDetailPage extends ConsumerWidget {
@@ -169,6 +170,7 @@ class TrainingDetailPage extends ConsumerWidget {
                       ? () => _undoFinalCompletion(context, ref, value)
                       : null,
                   onEditActual: (station) => _editActual(context, ref, station),
+                  onEditRunningLap: (lap) => _editRunningLap(context, ref, lap),
                   onEditReflection: () =>
                       _editReflection(context, ref, value.session),
                 ),
@@ -265,6 +267,39 @@ class TrainingDetailPage extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('保存失败：$error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _editRunningLap(
+    BuildContext context,
+    WidgetRef ref,
+    RunningLap lap,
+  ) async {
+    final edit = await showRunningLapDistanceEditor(
+      context,
+      initialDistanceMeters: lap.distanceMeters,
+      lapNumber: lap.sequenceIndex + 1,
+    );
+    if (edit == null || !context.mounted) return;
+    try {
+      final repository =
+          await ref.read(trainingRepositoryFutureProvider.future);
+      await repository.updateRunningLapDistance(
+        lapId: lap.id,
+        distanceMeters: edit.distanceMeters,
+      );
+      ref.invalidate(trainingReportProvider(sessionId));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('分段距离已保存')),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存分段距离失败：$error')),
         );
       }
     }
@@ -746,6 +781,7 @@ class _ReportBody extends StatelessWidget {
     required this.onConcept2,
     required this.onUndoFinalCompletion,
     required this.onEditActual,
+    required this.onEditRunningLap,
     required this.onEditReflection,
   });
 
@@ -762,6 +798,7 @@ class _ReportBody extends StatelessWidget {
   final VoidCallback? onConcept2;
   final VoidCallback? onUndoFinalCompletion;
   final ValueChanged<StationRecord> onEditActual;
+  final ValueChanged<RunningLap> onEditRunningLap;
   final VoidCallback onEditReflection;
 
   @override
@@ -927,6 +964,25 @@ class _ReportBody extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
+          if (report.runningLaps.isNotEmpty) ...[
+            Text('跑步手动分段', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 4),
+            const Text(
+              '心率按分段的绝对起止时间计算；没有心率交集时显示“无心率数据”。',
+              style: TextStyle(color: Colors.white54),
+            ),
+            const SizedBox(height: 10),
+            for (final lap in report.runningLaps)
+              _RunningLapRow(
+                lap: lap,
+                station: report.stations.firstWhere(
+                  (station) => station.id == lap.stationRecordId,
+                ),
+                heartRate: heartRate.valueOrNull?.byRunningLapId[lap.id],
+                onEditDistance: () => onEditRunningLap(lap),
+              ),
+            const SizedBox(height: 16),
+          ],
           Text('项目明细', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 10),
           ...report.stations.map(
@@ -1169,6 +1225,98 @@ class _StationRow extends StatelessWidget {
                     onPressed: onEditActual,
                     icon: const Icon(Icons.edit_note_rounded, size: 20),
                   ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RunningLapRow extends StatelessWidget {
+  const _RunningLapRow({
+    required this.lap,
+    required this.station,
+    required this.heartRate,
+    required this.onEditDistance,
+  });
+
+  final RunningLap lap;
+  final StationRecord station;
+  final HeartRateSummary? heartRate;
+  final VoidCallback onEditDistance;
+
+  @override
+  Widget build(BuildContext context) {
+    final pace = lap.pacePerKilometer;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+        child: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: Colors.green.withValues(alpha: .18),
+              foregroundColor: Colors.greenAccent,
+              child: Text('${lap.sequenceIndex + 1}'),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${station.type.label} ${station.runNumber ?? ''} · '
+                    '第 ${lap.sequenceIndex + 1} 段',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  Text(
+                    lap.distanceMeters == null
+                        ? '距离未填写'
+                        : '${lap.distanceMeters} m',
+                    style: const TextStyle(color: Colors.white54),
+                  ),
+                  Text(
+                    heartRate == null
+                        ? '无心率数据'
+                        : '平均 ${heartRate!.average} · '
+                            '最高 ${heartRate!.maximum} bpm',
+                    style: TextStyle(
+                      color: heartRate == null
+                          ? Colors.white38
+                          : Colors.redAccent.shade100,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  formatDuration(lap.duration, includeHours: false),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+                if (pace != null)
+                  Text(
+                    '${pace.inMinutes}:'
+                    '${pace.inSeconds.remainder(60).toString().padLeft(2, '0')} /km',
+                    style: const TextStyle(
+                      color: Colors.greenAccent,
+                      fontSize: 12,
+                    ),
+                  ),
+                IconButton(
+                  tooltip: lap.distanceMeters == null ? '填写距离' : '修改距离',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onEditDistance,
+                  icon: const Icon(Icons.edit_road_rounded, size: 20),
+                ),
               ],
             ),
           ],

@@ -44,6 +44,13 @@ final trainingReportProvider = FutureProvider.autoDispose
   final repository = await ref.watch(trainingRepositoryFutureProvider.future);
   final session = await repository.getSession(sessionId);
   if (session == null) return null;
-  final stations = await repository.listStations(sessionId);
-  return TrainingReport.build(session, stations);
+  final values = await Future.wait([
+    repository.listStations(sessionId),
+    repository.listRunningLaps(sessionId),
+  ]);
+  return TrainingReport.build(
+    session,
+    values[0] as List<StationRecord>,
+    values[1] as List<RunningLap>,
+  );
 });

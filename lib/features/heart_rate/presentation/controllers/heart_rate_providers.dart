@@ -48,10 +48,12 @@ final heartRateAnalysisProvider = FutureProvider.autoDispose
   final values = await Future.wait([
     heartRateRepository.listSamples(sessionId),
     trainingRepository.listStations(sessionId),
+    trainingRepository.listRunningLaps(sessionId),
   ]);
   return HeartRateAnalysis.build(
     values[0] as List<HeartRateSample>,
     values[1] as List<StationRecord>,
+    values[2] as List<RunningLap>,
   );
 });
 

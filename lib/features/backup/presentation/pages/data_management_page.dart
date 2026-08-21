@@ -147,7 +147,7 @@ class _DataManagementPageState extends ConsumerState<DataManagementPage> {
           const _InformationCard(
             icon: Icons.favorite_outline_rounded,
             title: '包含完整训练与器械数据',
-            text: '备份包含全程心率、Intervals.icu 匹配信息、训练感受，'
+            text: '备份包含手动跑步分段、全程心率、Intervals.icu 匹配信息、训练感受，'
                 '以及 Concept2 总成绩、间歇和逐桨数据。',
           ),
           const SizedBox(height: 10),

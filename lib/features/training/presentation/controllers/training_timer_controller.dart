@@ -20,6 +20,7 @@ final class TrainingTimerState {
     required this.now,
     this.selectedAthleteName = '我',
     this.isSaving = false,
+    this.runningLaps = const [],
   });
 
   final TrainingSession session;
@@ -27,6 +28,7 @@ final class TrainingTimerState {
   final DateTime now;
   final String selectedAthleteName;
   final bool isSaving;
+  final List<RunningLap> runningLaps;
 
   StationRecord? get current =>
       stations.where((item) => item.status == SegmentStatus.active).firstOrNull;
@@ -95,11 +97,27 @@ final class TrainingTimerState {
     return start == null ? Duration.zero : now.difference(start);
   }
 
+  List<RunningLap> get currentRunningLaps {
+    final stationId = current?.id;
+    if (stationId == null) return const [];
+    return runningLaps
+        .where((lap) => lap.stationRecordId == stationId)
+        .toList(growable: false);
+  }
+
+  Duration get currentLapElapsed {
+    final active = current;
+    if (active == null || active.type != StationType.run) return Duration.zero;
+    final start = currentRunningLaps.lastOrNull?.endedAt ?? active.startedAt;
+    return start == null ? Duration.zero : now.difference(start);
+  }
+
   TrainingTimerState copyWith({
     List<StationRecord>? stations,
     DateTime? now,
     String? selectedAthleteName,
     bool? isSaving,
+    List<RunningLap>? runningLaps,
   }) =>
       TrainingTimerState(
         session: session,
@@ -107,6 +125,7 @@ final class TrainingTimerState {
         now: now ?? this.now,
         selectedAthleteName: selectedAthleteName ?? this.selectedAthleteName,
         isSaving: isSaving ?? this.isSaving,
+        runningLaps: runningLaps ?? this.runningLaps,
       );
 }
 
@@ -123,11 +142,15 @@ final class TrainingTimerController
     ref.onDispose(() => _ticker?.cancel());
     final session = await _repository.getSession(arg);
     if (session == null) throw StateError('Training session $arg not found');
-    final stations = await _repository.listStations(arg);
+    final values = await Future.wait([
+      _repository.listStations(arg),
+      _repository.listRunningLaps(arg),
+    ]);
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
     return TrainingTimerState(
       session: session,
-      stations: stations,
+      stations: values[0] as List<StationRecord>,
+      runningLaps: values[1] as List<RunningLap>,
       now: _clock.now(),
     );
   }
@@ -151,6 +174,61 @@ final class TrainingTimerController
     state = AsyncData(value.copyWith(selectedAthleteName: athleteName));
   }
 
+  Future<RunningLap?> recordRunningLap() async {
+    final value = state.requireValue;
+    final current = value.current;
+    if (current == null || current.type != StationType.run || value.isSaving) {
+      return null;
+    }
+    state = AsyncData(value.copyWith(isSaving: true));
+    final now = _clock.now();
+    try {
+      final lapId = await _repository.recordRunningLap(
+        sessionId: value.session.id,
+        stationId: current.id,
+        endedAt: now,
+      );
+      final laps = await _repository.listRunningLaps(value.session.id);
+      state = AsyncData(
+        value.copyWith(
+          runningLaps: laps,
+          now: now,
+          isSaving: false,
+        ),
+      );
+      return laps.where((lap) => lap.id == lapId).firstOrNull;
+    } catch (_) {
+      state = AsyncData(value.copyWith(now: now, isSaving: false));
+      rethrow;
+    }
+  }
+
+  Future<void> updateRunningLapDistance(
+    int lapId,
+    int? distanceMeters,
+  ) async {
+    final value = state.requireValue;
+    if (value.isSaving) return;
+    state = AsyncData(value.copyWith(isSaving: true));
+    try {
+      await _repository.updateRunningLapDistance(
+        lapId: lapId,
+        distanceMeters: distanceMeters,
+      );
+      final laps = await _repository.listRunningLaps(value.session.id);
+      state = AsyncData(
+        value.copyWith(
+          runningLaps: laps,
+          now: _clock.now(),
+          isSaving: false,
+        ),
+      );
+    } catch (_) {
+      state = AsyncData(value.copyWith(isSaving: false));
+      rethrow;
+    }
+  }
+
   Future<bool> completeCurrent({required bool startTransition}) async =>
       _advance(skip: false, startTransition: startTransition);
 
@@ -171,9 +249,11 @@ final class TrainingTimerController
         at: now,
       );
       final refreshed = await _repository.listStations(value.session.id);
+      final laps = await _repository.listRunningLaps(value.session.id);
       state = AsyncData(
         value.copyWith(
           stations: refreshed,
+          runningLaps: laps,
           now: now,
           isSaving: false,
         ),
@@ -276,9 +356,11 @@ final class TrainingTimerController
         actualPerformance: actualPerformance,
       );
       final refreshed = await _repository.listStations(value.session.id);
+      final laps = await _repository.listRunningLaps(value.session.id);
       state = AsyncData(
         value.copyWith(
           stations: refreshed,
+          runningLaps: laps,
           now: _clock.now(),
           isSaving: false,
         ),
@@ -300,9 +382,11 @@ final class TrainingTimerController
         restoredAt: now,
       );
       final refreshed = await _repository.listStations(value.session.id);
+      final laps = await _repository.listRunningLaps(value.session.id);
       state = AsyncData(
         value.copyWith(
           stations: refreshed,
+          runningLaps: laps,
           now: now,
           isSaving: false,
         ),
@@ -383,9 +467,11 @@ final class TrainingTimerController
       }
 
       final refreshed = await _repository.listStations(value.session.id);
+      final laps = await _repository.listRunningLaps(value.session.id);
       state = AsyncData(
         value.copyWith(
           stations: refreshed,
+          runningLaps: laps,
           now: now,
           isSaving: false,
         ),
@@ -400,4 +486,5 @@ final class TrainingTimerController
 
 extension<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
+  T? get lastOrNull => isEmpty ? null : last;
 }

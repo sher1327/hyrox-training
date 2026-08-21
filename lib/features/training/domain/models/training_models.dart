@@ -285,6 +285,42 @@ final class StationRecord {
   }
 }
 
+enum RunningLapCaptureType { manual, finish }
+
+final class RunningLap {
+  const RunningLap({
+    required this.id,
+    required this.sessionId,
+    required this.stationRecordId,
+    required this.sequenceIndex,
+    required this.startedAt,
+    required this.endedAt,
+    required this.duration,
+    required this.captureType,
+    this.distanceMeters,
+  });
+
+  final int id;
+  final int sessionId;
+  final int stationRecordId;
+  final int sequenceIndex;
+  final DateTime startedAt;
+  final DateTime endedAt;
+  final Duration duration;
+  final int? distanceMeters;
+  final RunningLapCaptureType captureType;
+
+  Duration? get pacePerKilometer {
+    final distance = distanceMeters;
+    if (distance == null || distance <= 0 || duration <= Duration.zero) {
+      return null;
+    }
+    return Duration(
+      milliseconds: (duration.inMilliseconds * 1000 / distance).round(),
+    );
+  }
+}
+
 final class StationActualPerformance {
   const StationActualPerformance({
     this.distanceMeters,

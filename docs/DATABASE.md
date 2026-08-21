@@ -1,11 +1,12 @@
-# SQLite database design (v12)
+# SQLite database design (v13)
 
-Database: `hyrox.db`, with foreign keys enabled and schema version `12`.
+Database: `hyrox.db`, with foreign keys enabled and schema version `13`.
 
 ## Relationships
 
 ```text
 training_session 1 ─── 1..n station_record
+station_record 1 ─── 0..n running_lap
 training_session 1 ─── 0..n heart_rate_import
 heart_rate_import 1 ─── 1..n heart_rate_sample
 training_session 1 ─── 0..1 concept2_result
@@ -71,6 +72,13 @@ session. The count is dynamic; a session is no longer limited to 16 segments.
 One row per import batch, including source, external activity/file metadata,
 summary values and whether the batch is currently active for analysis. Previous
 imports are retained when a new FIT or Intervals.icu activity is selected.
+
+## `running_lap`
+
+Stores manual lap boundaries inside a run station. Each row contains absolute
+start/end timestamps, frozen duration, optional distance and whether it was
+captured by the athlete or automatically closed with the run station. Heart-rate
+summaries are derived from the active source using these absolute timestamps.
 
 ## `heart_rate_sample`
 
@@ -176,3 +184,12 @@ active. This makes the migration forward-only and preserves all training data.
   for pace and SPM charts.
 - PM heart-rate values remain raw Concept2 metadata and are not promoted to a
   third primary heart-rate source; BLE and Intervals.icu remain independent.
+
+## Version 13 manual running laps
+
+- Active run stations can record zero or more manual lap boundaries.
+- Once lap recording starts, completing the run automatically closes its final
+  lap; undoing station completion removes that generated boundary.
+- Lap distance is optional and editable after training. When present, pace per
+  kilometre is derived from the frozen lap duration.
+- Average and maximum heart rate are calculated independently for each lap.

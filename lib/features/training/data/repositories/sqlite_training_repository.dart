@@ -45,6 +45,32 @@ final class SqliteTrainingRepository implements TrainingRepository {
       (await _dao.listStations(sessionId)).map(_stationFromRow).toList();
 
   @override
+  Future<List<RunningLap>> listRunningLaps(int sessionId) async =>
+      (await _dao.listRunningLaps(sessionId)).map(_runningLapFromRow).toList();
+
+  @override
+  Future<int> recordRunningLap({
+    required int sessionId,
+    required int stationId,
+    required DateTime endedAt,
+  }) =>
+      _dao.recordRunningLap(
+        sessionId: sessionId,
+        stationId: stationId,
+        endedAt: endedAt,
+      );
+
+  @override
+  Future<void> updateRunningLapDistance({
+    required int lapId,
+    required int? distanceMeters,
+  }) =>
+      _dao.updateRunningLapDistance(
+        lapId: lapId,
+        distanceMeters: distanceMeters,
+      );
+
+  @override
   Future<void> activateStation(int stationId, DateTime startedAt) =>
       _dao.activateStation(stationId, startedAt);
 
@@ -277,6 +303,20 @@ StationRecord _stationFromRow(Map<String, Object?> row) => StationRecord(
           ? null
           : Duration(milliseconds: row['transition_duration_ms']! as int),
       skipReason: row['skip_reason'] as String?,
+    );
+
+RunningLap _runningLapFromRow(Map<String, Object?> row) => RunningLap(
+      id: row['id']! as int,
+      sessionId: row['session_id']! as int,
+      stationRecordId: row['station_record_id']! as int,
+      sequenceIndex: row['sequence_index']! as int,
+      startedAt: _date(row['started_at_ms'])!,
+      endedAt: _date(row['ended_at_ms'])!,
+      duration: Duration(milliseconds: row['duration_ms']! as int),
+      distanceMeters: row['distance_meters'] as int?,
+      captureType: RunningLapCaptureType.values.byName(
+        row['capture_type']! as String,
+      ),
     );
 
 DateTime? _date(Object? value) => value == null

@@ -29,6 +29,8 @@ Dashboard ── New training ── Active timer ── Summary
 
 - Total elapsed timer
 - Current segment and segment elapsed timer
+- Run segments expose a manual-lap action and current-lap elapsed timer
+- Recording a lap freezes its boundary immediately; distance can be entered now or later
 - Athlete selector for team modes: Me / named teammate(s) / Together
 - Main action: Complete segment
 - After completion, choose transition timing or start the next segment directly
@@ -60,6 +62,7 @@ Back navigation requires a future confirmation dialog because the active state i
 - Online activities are matched by time-range overlap; a single match imports
   directly, while multiple matches are presented for explicit selection
 - Full-session average/maximum plus per-segment average/maximum heart rate
+- Manual running laps show duration, optional distance/pace, and lap average/maximum heart rate
 - Imported timestamped samples remain in SQLite for future analysis
 - Planned and actual specifications are shown per completed segment
 - Actual values can be corrected after the workout from the report

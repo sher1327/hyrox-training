@@ -72,6 +72,70 @@ final class TrainingDao {
         orderBy: 'sequence_index ASC',
       );
 
+  Future<List<Map<String, Object?>>> listRunningLaps(int sessionId) =>
+      db.rawQuery(
+        '''SELECT running_lap.*
+           FROM running_lap
+           JOIN station_record
+             ON station_record.id = running_lap.station_record_id
+           WHERE running_lap.session_id = ?
+           ORDER BY station_record.sequence_index ASC,
+                    running_lap.sequence_index ASC''',
+        [sessionId],
+      );
+
+  Future<int> recordRunningLap({
+    required int sessionId,
+    required int stationId,
+    required DateTime endedAt,
+  }) =>
+      db.transaction((txn) async {
+        final stations = await txn.query(
+          'station_record',
+          columns: ['id', 'session_id', 'station_type', 'started_at_ms'],
+          where: "id = ? AND session_id = ? AND station_type = 'run' "
+              "AND status = 'active'",
+          whereArgs: [stationId, sessionId],
+          limit: 1,
+        );
+        if (stations.isEmpty) throw StateError('当前项目不是正在计时的跑步');
+        final existing = await txn.query(
+          'running_lap',
+          where: 'station_record_id = ?',
+          whereArgs: [stationId],
+          orderBy: 'sequence_index ASC',
+        );
+        final startedAtMs = existing.isEmpty
+            ? stations.single['started_at_ms']! as int
+            : existing.last['ended_at_ms']! as int;
+        final endedAtMs = endedAt.millisecondsSinceEpoch;
+        if (endedAtMs <= startedAtMs) throw StateError('分段时间必须大于零');
+        final lapId = await txn.insert('running_lap', {
+          'session_id': sessionId,
+          'station_record_id': stationId,
+          'sequence_index': existing.length,
+          'started_at_ms': startedAtMs,
+          'ended_at_ms': endedAtMs,
+          'duration_ms': endedAtMs - startedAtMs,
+          'capture_type': 'manual',
+        });
+        await _touchSession(txn, sessionId, endedAt);
+        return lapId;
+      });
+
+  Future<void> updateRunningLapDistance({
+    required int lapId,
+    required int? distanceMeters,
+  }) async {
+    final updated = await db.update(
+      'running_lap',
+      {'distance_meters': distanceMeters},
+      where: 'id = ?',
+      whereArgs: [lapId],
+    );
+    if (updated != 1) throw StateError('跑步分段不存在');
+  }
+
   Future<List<Map<String, Object?>>> listSessions() => db.query(
         'training_session',
         orderBy: 'started_at_ms DESC',
@@ -172,6 +236,15 @@ final class TrainingDao {
           whereArgs: [stationId],
         );
         if (updated != 1) throw StateError('当前项目状态已发生变化');
+
+        if (!skipped) {
+          await _closeFinalRunningLapIfNeeded(
+            txn,
+            sessionId: sessionId,
+            stationId: stationId,
+            endedAtMs: endedAtMs,
+          );
+        }
 
         if (nextStationId == null) {
           await txn.rawUpdate(
@@ -557,6 +630,12 @@ final class TrainingDao {
         );
         if (restored != 1) throw StateError('上一项目状态已发生变化');
 
+        await txn.delete(
+          'running_lap',
+          where: "station_record_id = ? AND capture_type = 'finish'",
+          whereArgs: [source['id']],
+        );
+
         final restoredAtMs = restoredAt.millisecondsSinceEpoch;
         if (sessionStatus == 'completed') {
           final reopened = await txn.update(
@@ -740,6 +819,40 @@ final class TrainingDao {
         where: "id = ? AND status = 'in_progress'",
         whereArgs: [sessionId],
       );
+
+  Future<void> _closeFinalRunningLapIfNeeded(
+    DatabaseExecutor executor, {
+    required int sessionId,
+    required int stationId,
+    required int endedAtMs,
+  }) async {
+    final stations = await executor.query(
+      'station_record',
+      columns: ['station_type'],
+      where: 'id = ? AND session_id = ?',
+      whereArgs: [stationId, sessionId],
+      limit: 1,
+    );
+    if (stations.isEmpty || stations.single['station_type'] != 'run') return;
+    final laps = await executor.query(
+      'running_lap',
+      where: 'station_record_id = ?',
+      whereArgs: [stationId],
+      orderBy: 'sequence_index ASC',
+    );
+    if (laps.isEmpty) return;
+    final startedAtMs = laps.last['ended_at_ms']! as int;
+    if (endedAtMs <= startedAtMs) return;
+    await executor.insert('running_lap', {
+      'session_id': sessionId,
+      'station_record_id': stationId,
+      'sequence_index': laps.length,
+      'started_at_ms': startedAtMs,
+      'ended_at_ms': endedAtMs,
+      'duration_ms': endedAtMs - startedAtMs,
+      'capture_type': 'finish',
+    });
+  }
 }
 
 String _stationTypeToDb(StationType type) => switch (type) {

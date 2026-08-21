@@ -1,5 +1,5 @@
 abstract final class DatabaseSchema {
-  static const version = 12;
+  static const version = 13;
 
   static const createTrainingTemplate = '''
 CREATE TABLE training_template (
@@ -117,6 +117,21 @@ CREATE TABLE station_record (
 )
 ''';
 
+  static const createRunningLap = '''
+CREATE TABLE running_lap (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL REFERENCES training_session(id) ON DELETE CASCADE,
+  station_record_id INTEGER NOT NULL REFERENCES station_record(id) ON DELETE CASCADE,
+  sequence_index INTEGER NOT NULL CHECK(sequence_index >= 0),
+  started_at_ms INTEGER NOT NULL,
+  ended_at_ms INTEGER NOT NULL CHECK(ended_at_ms > started_at_ms),
+  duration_ms INTEGER NOT NULL CHECK(duration_ms > 0),
+  distance_meters INTEGER CHECK(distance_meters IS NULL OR distance_meters > 0),
+  capture_type TEXT NOT NULL DEFAULT 'manual' CHECK(capture_type IN ('manual', 'finish')),
+  UNIQUE(station_record_id, sequence_index)
+)
+''';
+
   static const createHeartRateImport = '''
 CREATE TABLE heart_rate_import (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -201,6 +216,7 @@ CREATE TABLE concept2_stroke (
     'CREATE INDEX idx_template_segment_order ON template_segment(template_id, sequence_index)',
     'CREATE INDEX idx_session_started_at ON training_session(started_at_ms DESC)',
     'CREATE INDEX idx_station_session ON station_record(session_id, sequence_index)',
+    'CREATE INDEX idx_running_lap_session ON running_lap(session_id, station_record_id, sequence_index)',
     'CREATE INDEX idx_hr_session_time ON heart_rate_sample(session_id, timestamp_ms)',
     'CREATE INDEX idx_hr_import_session ON heart_rate_import(session_id, imported_at_ms DESC)',
     'CREATE UNIQUE INDEX idx_active_hr_import ON heart_rate_import(session_id) WHERE is_active = 1',
@@ -229,9 +245,10 @@ CREATE TABLE concept2_stroke (
     (type: 'wall_ball', distance: null),
   ];
 
-  static const ergTemplates = <ErgTemplateDefinition>[
-    ErgTemplateDefinition(name: '划船训练', stationType: 'row'),
-    ErgTemplateDefinition(name: '滑雪训练', stationType: 'ski_erg'),
+  static const singleStationTemplates = <SingleStationTemplateDefinition>[
+    SingleStationTemplateDefinition(name: '跑步训练', stationType: 'run'),
+    SingleStationTemplateDefinition(name: '划船训练', stationType: 'row'),
+    SingleStationTemplateDefinition(name: '滑雪训练', stationType: 'ski_erg'),
   ];
 
   static const builtInTemplates = <BuiltInTemplateDefinition>[
@@ -346,8 +363,8 @@ final class BuiltInSegmentDefinition {
   final int? repetitions;
 }
 
-final class ErgTemplateDefinition {
-  const ErgTemplateDefinition({
+final class SingleStationTemplateDefinition {
+  const SingleStationTemplateDefinition({
     required this.name,
     required this.stationType,
   });

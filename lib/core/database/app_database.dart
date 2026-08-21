@@ -48,13 +48,14 @@ final class AppDatabase {
         await db.execute(DatabaseSchema.createTemplateSegment);
         await db.execute(DatabaseSchema.createTrainingSession);
         await db.execute(DatabaseSchema.createStationRecord);
+        await db.execute(DatabaseSchema.createRunningLap);
         await db.execute(DatabaseSchema.createHeartRateImport);
         await db.execute(DatabaseSchema.createHeartRateSample);
         await db.execute(DatabaseSchema.createConcept2Result);
         await db.execute(DatabaseSchema.createConcept2Interval);
         await db.execute(DatabaseSchema.createConcept2Stroke);
         await _seedBuiltInTemplates(db);
-        await _seedErgTemplates(db);
+        await _seedSingleStationTemplates(db);
         for (final statement in DatabaseSchema.indexes) {
           await db.execute(statement);
         }
@@ -454,7 +455,7 @@ CHECK(feeling IS NULL OR feeling IN
             'CREATE INDEX idx_concept2_interval_order '
             'ON concept2_interval(concept2_result_row_id, sequence_index)',
           );
-          await _seedErgTemplates(db);
+          await _seedSingleStationTemplates(db);
         }
         if (oldVersion < 12) {
           await db.execute(DatabaseSchema.createConcept2Stroke);
@@ -462,6 +463,14 @@ CHECK(feeling IS NULL OR feeling IN
             'CREATE INDEX idx_concept2_stroke_order '
             'ON concept2_stroke(concept2_result_row_id, sequence_index)',
           );
+        }
+        if (oldVersion < 13) {
+          await db.execute(DatabaseSchema.createRunningLap);
+          await db.execute(
+            'CREATE INDEX idx_running_lap_session '
+            'ON running_lap(session_id, station_record_id, sequence_index)',
+          );
+          await _seedSingleStationTemplates(db);
         }
       },
     );
@@ -504,9 +513,9 @@ CHECK(feeling IS NULL OR feeling IN
     }
   }
 
-  Future<void> _seedErgTemplates(DatabaseExecutor db) async {
+  Future<void> _seedSingleStationTemplates(DatabaseExecutor db) async {
     final now = DateTime.now().toUtc().millisecondsSinceEpoch;
-    for (final definition in DatabaseSchema.ergTemplates) {
+    for (final definition in DatabaseSchema.singleStationTemplates) {
       final existing = await db.query(
         'training_template',
         columns: ['id'],
