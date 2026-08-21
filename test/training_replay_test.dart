@@ -173,8 +173,62 @@ void main() {
     expect(find.text('训练回放'), findsOneWidget);
     expect(find.text('心率曲线'), findsOneWidget);
     expect(find.text('心率 Zone'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('replay-section-summary-content')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('replay-section-current-content')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('replay-section-heart-rate-chart-content')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('replay-section-heart-rate-zones-content')),
+      findsNothing,
+    );
     expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
     expect(find.byTooltip('导出完整回放'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const ValueKey('replay-section-summary-toggle')),
+    );
+    await tester.tap(
+      find.byKey(const ValueKey('replay-section-current-toggle')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('replay-section-summary-content')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('replay-section-current-content')),
+      findsNothing,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('replay-section-heart-rate-chart-toggle')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('replay-section-heart-rate-chart-content')),
+      findsNothing,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey('replay-section-heart-rate-zones-toggle')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('replay-section-heart-rate-zones-content')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('replay-section-timeline-content')),
+      findsOneWidget,
+    );
 
     await tester.tap(find.byIcon(Icons.play_arrow_rounded));
     await tester.pump(const Duration(milliseconds: 150));

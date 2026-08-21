@@ -115,13 +115,26 @@ class TrainingReplayPage extends ConsumerWidget {
   }
 }
 
-class _ReplayBody extends ConsumerWidget {
+class _ReplayBody extends ConsumerStatefulWidget {
   const _ReplayBody({required this.replay});
 
   final TrainingReplay replay;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ReplayBody> createState() => _ReplayBodyState();
+}
+
+class _ReplayBodyState extends ConsumerState<_ReplayBody> {
+  bool _summaryExpanded = true;
+  bool _currentStatusExpanded = true;
+  bool _heartRateChartExpanded = true;
+  bool _heartRateZonesExpanded = false;
+  bool _timelineExpanded = true;
+
+  TrainingReplay get replay => widget.replay;
+
+  @override
+  Widget build(BuildContext context) {
     final key = ReplayPlaybackKey(
       sessionId: replay.sessionId,
       duration: replay.duration,
@@ -138,7 +151,13 @@ class _ReplayBody extends ConsumerWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 18),
             children: [
-              _SummaryCard(replay: replay),
+              _SummaryCard(
+                replay: replay,
+                expanded: _summaryExpanded,
+                onToggle: () => setState(
+                  () => _summaryExpanded = !_summaryExpanded,
+                ),
+              ),
               const SizedBox(height: 12),
               _NowCard(
                 elapsed: playback.elapsed,
@@ -146,10 +165,19 @@ class _ReplayBody extends ConsumerWidget {
                 heartRate: currentHeartRate,
                 zone: currentZone,
                 segment: currentSegment,
+                expanded: _currentStatusExpanded,
+                onToggle: () => setState(
+                  () => _currentStatusExpanded = !_currentStatusExpanded,
+                ),
               ),
               const SizedBox(height: 12),
               _SectionCard(
+                sectionId: 'heart-rate-chart',
                 title: '心率曲线',
+                expanded: _heartRateChartExpanded,
+                onToggle: () => setState(
+                  () => _heartRateChartExpanded = !_heartRateChartExpanded,
+                ),
                 trailing: Text(
                   '最高 ${replay.maximumHeartRate ?? '--'}  '
                   '平均 ${replay.averageHeartRate ?? '--'}',
@@ -165,14 +193,24 @@ class _ReplayBody extends ConsumerWidget {
               ),
               const SizedBox(height: 12),
               _SectionCard(
+                sectionId: 'heart-rate-zones',
                 title: '心率 Zone',
                 subtitle: '当前按本次最高心率 '
                     '${replay.zoneReferenceMaximumBpm} bpm 计算',
+                expanded: _heartRateZonesExpanded,
+                onToggle: () => setState(
+                  () => _heartRateZonesExpanded = !_heartRateZonesExpanded,
+                ),
                 child: _ZoneStats(stats: replay.zoneStats),
               ),
               const SizedBox(height: 12),
               _SectionCard(
+                sectionId: 'timeline',
                 title: '训练时间轴',
+                expanded: _timelineExpanded,
+                onToggle: () => setState(
+                  () => _timelineExpanded = !_timelineExpanded,
+                ),
                 child: Column(
                   children: [
                     _SegmentTimeline(
@@ -226,89 +264,131 @@ class _ReplayBody extends ConsumerWidget {
 }
 
 class _SummaryCard extends StatelessWidget {
-  const _SummaryCard({required this.replay});
+  const _SummaryCard({
+    required this.replay,
+    required this.expanded,
+    required this.onToggle,
+  });
 
   final TrainingReplay replay;
+  final bool expanded;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: Colors.redAccent.withValues(alpha: .14),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.directions_run_rounded,
-                      color: Colors.redAccent,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          replay.title,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        Text(
-                          formatSessionDate(replay.startedAt),
-                          style: const TextStyle(color: Colors.white54),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            Semantics(
+              button: true,
+              expanded: expanded,
+              label: '训练概览，${expanded ? '已展开' : '已收起'}',
+              child: InkWell(
+                key: const ValueKey('replay-section-summary-toggle'),
+                onTap: onToggle,
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Row(
                     children: [
-                      Text(
-                        _clock(replay.duration),
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          fontFeatures: const [
-                            FontFeature.tabularFigures(),
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent.withValues(alpha: .14),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.directions_run_rounded,
+                          color: Colors.redAccent,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              replay.title,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            Text(
+                              formatSessionDate(replay.startedAt),
+                              style: const TextStyle(color: Colors.white54),
+                            ),
                           ],
                         ),
                       ),
-                      const Text(
-                        '总时长',
-                        style: TextStyle(color: Colors.white54),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            _clock(replay.duration),
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
+                          const Text(
+                            '总时长',
+                            style: TextStyle(color: Colors.white54),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 8),
+                      AnimatedRotation(
+                        turns: expanded ? .5 : 0,
+                        duration: const Duration(milliseconds: 180),
+                        child: const Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          color: Colors.white60,
+                        ),
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
-              const Divider(height: 30),
-              Row(
-                children: [
-                  _SummaryMetric(
-                    label: '平均心率',
-                    value: '${replay.averageHeartRate ?? '--'}',
-                    unit: 'bpm',
-                  ),
-                  _SummaryMetric(
-                    label: '最大心率',
-                    value: '${replay.maximumHeartRate ?? '--'}',
-                    unit: 'bpm',
-                  ),
-                  _SummaryMetric(
-                    label: '心率采样',
-                    value: '${replay.points.length}',
-                    unit: '条',
-                  ),
-                ],
-              ),
-            ],
-          ),
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeInOut,
+              child: expanded
+                  ? Padding(
+                      key: const ValueKey('replay-section-summary-content'),
+                      padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+                      child: Column(
+                        children: [
+                          const Divider(height: 12),
+                          const SizedBox(height: 9),
+                          Row(
+                            children: [
+                              _SummaryMetric(
+                                label: '平均心率',
+                                value: '${replay.averageHeartRate ?? '--'}',
+                                unit: 'bpm',
+                              ),
+                              _SummaryMetric(
+                                label: '最大心率',
+                                value: '${replay.maximumHeartRate ?? '--'}',
+                                unit: 'bpm',
+                              ),
+                              _SummaryMetric(
+                                label: '心率采样',
+                                value: '${replay.points.length}',
+                                unit: '条',
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
         ),
       );
 }
@@ -350,6 +430,8 @@ class _NowCard extends StatelessWidget {
     required this.heartRate,
     required this.zone,
     required this.segment,
+    required this.expanded,
+    required this.onToggle,
   });
 
   final Duration elapsed;
@@ -357,131 +439,210 @@ class _NowCard extends StatelessWidget {
   final int? heartRate;
   final HeartRateZone? zone;
   final ReplaySegment? segment;
+  final bool expanded;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) => Card(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '当前时间',
-                      style: TextStyle(color: Colors.white54),
-                    ),
-                    Text(
-                      '${_clock(elapsed)} / ${_clock(duration)}',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                        fontWeight: FontWeight.w700,
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            Semantics(
+              button: true,
+              expanded: expanded,
+              label: '当前状态，${expanded ? '已展开' : '已收起'}',
+              child: InkWell(
+                key: const ValueKey('replay-section-current-toggle'),
+                onTap: onToggle,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          '当前状态',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      segment?.name ?? '转换 / 未记录区间',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: segment == null
-                            ? Colors.white38
-                            : _stationColor(segment!.type),
+                      Text(
+                        '${_clock(elapsed)} / ${_clock(duration)}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      AnimatedRotation(
+                        turns: expanded ? .5 : 0,
+                        duration: const Duration(milliseconds: 180),
+                        child: const Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          color: Colors.white60,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-                decoration: BoxDecoration(
-                  color: (zone == null ? Colors.white : _zoneColor(zone!))
-                      .withValues(alpha: .12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          '${heartRate ?? '--'}',
-                          style: Theme.of(context)
-                              .textTheme
-                              .headlineMedium
-                              ?.copyWith(
-                                color: zone == null
-                                    ? Colors.white
-                                    : _zoneColor(zone!),
-                                fontWeight: FontWeight.w800,
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeInOut,
+              child: expanded
+                  ? Padding(
+                      key: const ValueKey('replay-section-current-content'),
+                      padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              segment?.name ?? '转换 / 未记录区间',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: segment == null
+                                    ? Colors.white38
+                                    : _stationColor(segment!.type),
+                                fontWeight: FontWeight.w600,
                               ),
-                        ),
-                        const Padding(
-                          padding: EdgeInsets.only(bottom: 4, left: 3),
-                          child: Text('bpm'),
-                        ),
-                      ],
-                    ),
-                    Text(zone?.label ?? '--'),
-                  ],
-                ),
-              ),
-            ],
-          ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 9,
+                            ),
+                            decoration: BoxDecoration(
+                              color: (zone == null
+                                      ? Colors.white
+                                      : _zoneColor(zone!))
+                                  .withValues(alpha: .12),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              children: [
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      '${heartRate ?? '--'}',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .headlineMedium
+                                          ?.copyWith(
+                                            color: zone == null
+                                                ? Colors.white
+                                                : _zoneColor(zone!),
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                    ),
+                                    const Padding(
+                                      padding:
+                                          EdgeInsets.only(bottom: 4, left: 3),
+                                      child: Text('bpm'),
+                                    ),
+                                  ],
+                                ),
+                                Text(zone?.label ?? '--'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
         ),
       );
 }
 
 class _SectionCard extends StatelessWidget {
   const _SectionCard({
+    required this.sectionId,
     required this.title,
     required this.child,
+    required this.expanded,
+    required this.onToggle,
     this.subtitle,
     this.trailing,
   });
 
+  final String sectionId;
   final String title;
   final String? subtitle;
   final Widget? trailing;
   final Widget child;
+  final bool expanded;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: Theme.of(context).textTheme.titleMedium,
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Semantics(
+              button: true,
+              expanded: expanded,
+              label: '$title，${expanded ? '已展开' : '已收起'}',
+              child: InkWell(
+                key: ValueKey('replay-section-$sectionId-toggle'),
+                onTap: onToggle,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            if (subtitle != null)
+                              Text(
+                                subtitle!,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(color: Colors.white54),
+                              ),
+                          ],
                         ),
-                        if (subtitle != null)
-                          Text(
-                            subtitle!,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodySmall
-                                ?.copyWith(color: Colors.white54),
-                          ),
+                      ),
+                      if (trailing != null) ...[
+                        trailing!,
+                        const SizedBox(width: 8),
                       ],
-                    ),
+                      AnimatedRotation(
+                        turns: expanded ? .5 : 0,
+                        duration: const Duration(milliseconds: 180),
+                        child: const Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          color: Colors.white60,
+                        ),
+                      ),
+                    ],
                   ),
-                  if (trailing != null) trailing!,
-                ],
+                ),
               ),
-              const SizedBox(height: 16),
-              child,
-            ],
-          ),
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeInOut,
+              child: expanded
+                  ? Padding(
+                      key: ValueKey('replay-section-$sectionId-content'),
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: child,
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
         ),
       );
 }
